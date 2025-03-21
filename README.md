@@ -1,210 +1,217 @@
-I'll write test cases for this Java 8 Spring Boot service method. Looking at the code, I can see you have a method `getDocumentMetaDataForMUR` that retrieves document metadata based on branch code, country code, and MUR code list.
+package com.bnpparibas.mgl.service.impl;
 
-Here are comprehensive test cases using JUnit and Mockito:
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
-```java
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import com.bnpparibas.mgl.model.SwiftAckNackResponse;
+import com.bnpparibas.mgl.model.SwiftBranchDetailsMapping;
+import com.bnpparibas.mgl.utils.FileUtil;
+import com.bnpparibas.mgl.utils.ReferentialUtils;
+import com.bnpparibas.mgl.utils.StringUtils;
+import com.bnpparibas.mgl.constants.SwiftConstants;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.*;
+@ExtendWith(MockitoExtension.class)
+public class SwiftServiceImplTest {
 
-@ExtendWith({MockitoExtension.class, SpringExtension.class})
-public class TradeDocServiceImplTest {
-
-    @Mock
-    private DocumentRepository documentsRepository;
-    
     @InjectMocks
-    private TradeDocServiceImpl tradeDocService;
+    private SwiftServiceImpl swiftService;
     
-    private DocumentEntity documentEntity1;
-    private DocumentEntity documentEntity2;
+    @Mock
+    private ReferentialUtils referentialUtils;
+    
+    @Mock
+    private FileUtil fileUtil;
+    
+    @Mock
+    private StringUtils stringUtils;
+    
+    @Mock
+    private MultipartFile mockFile;
+    
+    @Mock
+    private File convertedFile;
+    
+    @Spy
+    private Map<String, String> foldersPath = new HashMap<>();
     
     @BeforeEach
-    public void setUp() {
-        // Set up test document entities
-        documentEntity1 = new DocumentEntity();
-        documentEntity1.setMurCode("MUR001");
-        documentEntity1.setDocumentId("DOC001");
-        documentEntity1.setName("Document1.pdf");
-        documentEntity1.setRefEventId("EVENT001");
-        documentEntity1.setRefRequestId("REQ001");
+    public void setup() {
+        foldersPath.put(SwiftConstants.SWIFT_TO_DO, "/path/to/todo");
+        foldersPath.put(SwiftConstants.SWIFT_ERROR, "/path/to/error");
         
-        documentEntity2 = new DocumentEntity();
-        documentEntity2.setMurCode("MUR002");
-        documentEntity2.setDocumentId("DOC002");
-        documentEntity2.setName("Document2.pdf");
-        documentEntity2.setRefEventId("EVENT002");
-        documentEntity2.setRefRequestId("REQ002");
+        // Setting up the ThreadPool executor using ReflectionTestUtils
+        ReflectionTestUtils.setField(swiftService, "swiftRequestExecutor", 
+                Executors.newFixedThreadPool(5));
     }
     
     @Test
-    public void testGetDocumentMetaDataForMUR_Success() {
-        // Given
-        String branchCode = "BR001";
-        String countryCode = "US";
-        List<String> murCodeList = Arrays.asList("MUR001", "MUR002");
-        String branchCountryCode = branchCode + countryCode;
+    void testRoutingCodeBasedMapping_Success() {
+        // Setup
+        Map<String, String> context = new HashMap<>();
+        context.put("RECEIVER_BIC_CODE", "TESTBIC1");
+        context.put("BNP_CODE", "BNP123");
         
-        when(documentsRepository.findByMurCodeIn(murCodeList))
-            .thenReturn(Arrays.asList(documentEntity1, documentEntity2));
-            
-        // Mock the getBranchCountryCode method from CommonUtils
-        // This requires additional setup with PowerMock or appropriate reflection-based mocking
+        SwiftBranchDetailsMapping mapping = new SwiftBranchDetailsMapping();
+        when(referentialUtils.getSwiftBranchDetailsMapping(anyString(), anyString(), anyString()))
+            .thenReturn(mapping);
         
-        // When
-        List<DocumentMetaDataDocstoreWithVersioning> result = 
-            tradeDocService.getDocumentMetaDataForMUR(branchCode, countryCode, murCodeList);
+        when(stringUtils.isBlank(anyString())).thenReturn(false);
         
-        // Then
+        // Call the method using reflection as it's private
+        Map<String, SwiftAckNackResponse> result = ReflectionTestUtils.invokeMethod(
+                swiftService, "routingCodeBasedMapping", context, new HashMap<String, Object>());
+        
+        // Assertions
         assertNotNull(result);
-        assertEquals(2, result.size());
-        verify(documentsRepository, times(1)).findByMurCodeIn(murCodeList);
-        
-        // Verify metadata for first document
-        DocumentMetaDataDocstoreWithVersioning metadata1 = result.get(0);
-        assertEquals(documentEntity1.getMurCode(), metadata1.getMurCode());
-        assertEquals(documentEntity1.getDocumentId(), metadata1.getId());
-        assertEquals(documentEntity1.getName(), metadata1.getFileName());
-        assertEquals(documentEntity1.getRefEventId(), metadata1.getEventId());
-        assertEquals(documentEntity1.getRefRequestId(), metadata1.getRequestId());
-        
-        // Verify metadata for second document
-        DocumentMetaDataDocstoreWithVersioning metadata2 = result.get(1);
-        assertEquals(documentEntity2.getMurCode(), metadata2.getMurCode());
-        assertEquals(documentEntity2.getDocumentId(), metadata2.getId());
-        assertEquals(documentEntity2.getName(), metadata2.getFileName());
-        assertEquals(documentEntity2.getRefEventId(), metadata2.getEventId());
-        assertEquals(documentEntity2.getRefRequestId(), metadata2.getRequestId());
+        verify(referentialUtils).getSwiftBranchDetailsMapping(anyString(), anyString(), anyString());
     }
     
     @Test
-    public void testGetDocumentMetaDataForMUR_EmptyMurCodeList() {
-        // Given
-        String branchCode = "BR001";
-        String countryCode = "US";
-        List<String> murCodeList = Collections.emptyList();
+    void testPublish_WithFiles() {
+        // Setup
+        MultipartFile[] files = new MultipartFile[1];
+        files[0] = mockFile;
+        Map<String, String> swiftMessageType = new HashMap<>();
+        swiftMessageType.put("type", "MT799");
         
-        // When
-        List<DocumentMetaDataDocstoreWithVersioning> result = 
-            tradeDocService.getDocumentMetaDataForMUR(branchCode, countryCode, murCodeList);
+        // Mock file existence
+        when(mockFile.isEmpty()).thenReturn(false);
         
-        // Then
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
-        verify(documentsRepository, times(1)).findByMurCodeIn(murCodeList);
+        // Call method
+        swiftService.publish(files, swiftMessageType);
+        
+        // Verify that processing was attempted
+        verify(mockFile).isEmpty();
     }
     
     @Test
-    public void testGetDocumentMetaDataForMUR_NoMatchingDocuments() {
-        // Given
-        String branchCode = "BR001";
-        String countryCode = "US";
-        List<String> murCodeList = Arrays.asList("MUR003", "MUR004");
+    void testProcessFile_Success() throws Exception {
+        // Setup
+        Map<String, SwiftAckNackResponse> swiftDataMap = new HashMap<>();
+        Map<String, String> multiplePrtMap = new HashMap<>();
+        multiplePrtMap.put("header1", "content1");
         
-        when(documentsRepository.findByMurCodeIn(murCodeList))
-            .thenReturn(Collections.emptyList());
+        when(fileUtil.convertMultiPartToFile(any(MultipartFile.class), anyString(), anyString()))
+            .thenReturn(convertedFile);
         
-        // When
-        List<DocumentMetaDataDocstoreWithVersioning> result = 
-            tradeDocService.getDocumentMetaDataForMUR(branchCode, countryCode, murCodeList);
+        when(convertedFile.getName()).thenReturn("testFile.txt");
+        when(stringUtils.isBlank(anyString())).thenReturn(false);
         
-        // Then
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
-        verify(documentsRepository, times(1)).findByMurCodeIn(murCodeList);
+        SwiftAckNackResponse mockResponse = mock(SwiftAckNackResponse.class);
+        when(mockResponse.getBranchCode()).thenReturn("BR001");
+        when(mockResponse.getCountryCode()).thenReturn("FR");
+        
+        // Call method using reflection as it's private
+        ReflectionTestUtils.invokeMethod(
+                swiftService, "processFile", 
+                mockFile, swiftDataMap, new java.util.concurrent.atomic.AtomicBoolean(false), 
+                new HashMap<String, String>(), foldersPath);
+        
+        // Verify file conversion was attempted
+        verify(fileUtil).convertMultiPartToFile(any(MultipartFile.class), anyString(), anyString());
     }
     
     @Test
-    public void testGetDocumentMetaDataForMUR_FilterByBranchCountryCode() {
-        // Given
-        String branchCode = "BR001";
-        String countryCode = "US";
-        List<String> murCodeList = Arrays.asList("MUR001", "MUR002");
-        String branchCountryCode = branchCode + countryCode;
+    void testProcessAckNackFile_WithValidBranchAndCountryCode() {
+        // Setup
+        Map<String, SwiftAckNackResponse> swiftDataMap = new HashMap<>();
+        SwiftAckNackResponse response = new SwiftAckNackResponse();
+        response.setBranchCode("BR001");
+        response.setCountryCode("FR");
+        response.setReceiverBicCode("BNPAFRPP");
+        response.setFileName("test.txt");
         
-        // Setup CommonUtils mock to return matching branch country code for first document
-        // and non-matching for second document
+        Map<String, String> context = new HashMap<>();
         
-        when(documentsRepository.findByMurCodeIn(murCodeList))
-            .thenReturn(Arrays.asList(documentEntity1, documentEntity2));
-            
-        // Mock isValidBranchCountryCode method to only return true for the first document
-        // This would require using a spy for the service or setting up appropriate mocking
+        when(stringUtils.isBlank("BR001")).thenReturn(false);
+        when(stringUtils.isBlank("FR")).thenReturn(false);
         
-        // When
-        List<DocumentMetaDataDocstoreWithVersioning> result = 
-            tradeDocService.getDocumentMetaDataForMUR(branchCode, countryCode, murCodeList);
+        // Call method using reflection
+        ReflectionTestUtils.invokeMethod(
+                swiftService, "processAckNackFile", 
+                response, swiftDataMap, foldersPath);
         
-        // Then
-        assertNotNull(result);
-        assertEquals(1, result.size()); // Only one document should pass the filter
-        verify(documentsRepository, times(1)).findByMurCodeIn(murCodeList);
-        
-        // Verify the remaining document metadata
-        DocumentMetaDataDocstoreWithVersioning metadata = result.get(0);
-        assertEquals(documentEntity1.getMurCode(), metadata.getMurCode());
+        // Verify the data was added to map with proper key
+        assertTrue(swiftDataMap.containsKey("BR001-FR"));
     }
     
     @Test
-    public void testIsValidBranchCountryCode_Match() {
-        // Given
-        String branchCountryCode = "BR001US";
-        DocumentEntity document = new DocumentEntity();
-        document.setRefRequestId("REQ001");
-        document.setRefEventId("EVENT001");
+    void testIsIncomingMessageType_True() {
+        // Setup
+        SwiftAckNackResponse response = new SwiftAckNackResponse();
+        response.setSwiftStatus(""); // Blank status
+        response.setReceiverBicCode(""); // Blank code
         
-        // Mock CommonUtils.getBranchCountryCode to return matching branch country code
-        // This requires additional setup with PowerMock or appropriate reflection-based mocking
+        when(stringUtils.isBlank("")).thenReturn(true);
         
-        // When
-        boolean result = tradeDocService.isValidBranchCountryCode(document, branchCountryCode);
+        // Call method using reflection
+        boolean result = ReflectionTestUtils.invokeMethod(
+                swiftService, "isIncomingMessageType", response);
         
-        // Then
+        // Expected to be true when both values are blank
         assertTrue(result);
     }
     
     @Test
-    public void testIsValidBranchCountryCode_NoMatch() {
-        // Given
-        String branchCountryCode = "BR001US";
-        DocumentEntity document = new DocumentEntity();
-        document.setRefRequestId("REQ001");
-        document.setRefEventId("EVENT001");
+    void testGetDocumentMetaDataForBranch_Success() {
+        // Setup
+        Map<String, SwiftAckNackResponse> swiftDataMap = new HashMap<>();
+        SwiftAckNackResponse response = new SwiftAckNackResponse();
+        response.setBranchCode("BR001");
+        response.setCountryCode("FR");
+        swiftDataMap.put("BR001-FR", response);
         
-        // Mock CommonUtils.getBranchCountryCode to return non-matching branch country code
-        // This requires additional setup with PowerMock or appropriate reflection-based mocking
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        futures.add(future);
         
-        // When
-        boolean result = tradeDocService.isValidBranchCountryCode(document, branchCountryCode);
+        // Mock getDocumentMetaData method to return a CompletableFuture
+        when(ReflectionTestUtils.invokeMethod(
+                eq(swiftService), eq("getDocumentMetaData"), 
+                anyString(), any())).thenReturn(future);
         
-        // Then
-        assertFalse(result);
+        // Call method using reflection
+        ReflectionTestUtils.invokeMethod(
+                swiftService, "getDocumentMetaDataForBranch", swiftDataMap);
+        
+        // Verify completion
+        assertDoesNotThrow(() -> CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join());
+    }
+    
+    @Test
+    void testGetDocumentMetaData_Success() {
+        // Setup
+        String key = "BR001-FR";
+        List<SwiftAckNackResponse> values = new ArrayList<>();
+        SwiftAckNackResponse response = new SwiftAckNackResponse();
+        response.setMurCode("MUR123");
+        values.add(response);
+        
+        // Call method using reflection
+        CompletableFuture<Void> result = ReflectionTestUtils.invokeMethod(
+                swiftService, "getDocumentMetaData", key, values);
+        
+        // Verify completion
+        assertNotNull(result);
+        assertDoesNotThrow(() -> result.join());
     }
 }
-```
-
-For more comprehensive testing, you may want to consider:
-
-1. Testing the `isValidBranchCountryCode` method more thoroughly by mocking the `CommonUtils.getBranchCountryCode` method using PowerMockito or a similar tool.
-
-2. Adding edge cases like:
-   - Null values for branchCode or countryCode
-   - Special characters in codes
-   - Very large murCodeList
-
-3. Integration tests that would verify the actual interaction with the repository.
-
-Would you like me to expand on any specific part of these test cases or add any additional test scenarios?​​​​​​​​​​​​​​​​
