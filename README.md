@@ -1,75 +1,272 @@
-#ChatGPT
+# Detailed Inventory Management System Specifications
 
-Here’s a 15-day structured task plan for your Inventory Management System project using Spring Boot (backend) and Angular (frontend) with three roles:
-	•	User (register vehicles for transporting goods)
-	•	Admin (manage warehouse categories & view analytics)
-	•	Logistics Coordinator (monitor vehicle movement & goods quality)
+## Database Structure & Entity Relationships
 
-⸻
+### User Entity
+```
+Table: users
+- id (Long, PK)
+- username (String, unique, not null)
+- password (String, not null, encrypted)
+- email (String, unique, not null)
+- role (Enum: ADMIN, USER, LOGISTICS_COORDINATOR)
+- firstName (String)
+- lastName (String)
+- phoneNumber (String)
+- createdAt (LocalDateTime)
+- lastLogin (LocalDateTime)
+- active (Boolean)
+```
 
-Day 1-2: Project Setup & Planning
-	•	Set up Spring Boot project with necessary dependencies (Spring Security, JPA, Hibernate, JWT, etc.).
-	•	Set up Angular project with routing and basic UI structure.
-	•	Define user roles and authentication flow.
-	•	Set up database schema (MySQL/PostgreSQL).
+### Vehicle Entity
+```
+Table: vehicles
+- id (Long, PK)
+- registrationNumber (String, unique, not null)
+- vehicleType (String)
+- capacity (Double) // in tons or cubic meters
+- model (String)
+- manufacturer (String)
+- manufacturingYear (Integer)
+- currentStatus (Enum: AVAILABLE, IN_TRANSIT, MAINTENANCE)
+- lastMaintenanceDate (LocalDate)
+- owner (User, FK to users.id)
+- currentLocation (String)
+- gpsEnabled (Boolean)
+- fuelEfficiency (Double)
+- createdAt (LocalDateTime)
+- updatedAt (LocalDateTime)
+```
 
-⸻
+### Category Entity
+```
+Table: categories
+- id (Long, PK)
+- name (String, unique, not null)
+- description (String)
+- storageRequirements (String)
+- isPerishable (Boolean)
+- shelfLife (Integer) // in days, null if not perishable
+- createdBy (User, FK to users.id)
+- createdAt (LocalDateTime)
+- updatedAt (LocalDateTime)
+- active (Boolean)
+```
 
-Day 3-4: Authentication & Authorization
-	•	Implement JWT-based authentication in Spring Boot.
-	•	Create login, registration, and role-based access in Angular.
-	•	Implement guards and interceptors in Angular.
+### Inventory Entity
+```
+Table: inventory_items
+- id (Long, PK)
+- name (String, not null)
+- category (Category, FK to categories.id)
+- quantity (Integer, not null)
+- unitOfMeasure (String)
+- location (String) // warehouse location code
+- batchNumber (String)
+- expiryDate (LocalDate) // null if not applicable
+- qualityStatus (Enum: GOOD, DAMAGED, EXPIRED, UNDER_INSPECTION)
+- acquisitionDate (LocalDate)
+- lastQualityCheck (LocalDateTime)
+- minimumStockLevel (Integer)
+- price (BigDecimal)
+- supplier (String)
+- notes (String)
+- createdAt (LocalDateTime)
+- updatedAt (LocalDateTime)
+```
 
-⸻
+### VehicleMovement Entity
+```
+Table: vehicle_movements
+- id (Long, PK)
+- vehicle (Vehicle, FK to vehicles.id)
+- departureLocation (String, not null)
+- destinationLocation (String, not null)
+- departureTime (LocalDateTime)
+- estimatedArrivalTime (LocalDateTime)
+- actualArrivalTime (LocalDateTime)
+- status (Enum: SCHEDULED, IN_TRANSIT, COMPLETED, DELAYED)
+- assignedCoordinator (User, FK to users.id)
+- inventoryItems (List<InventoryItem>) // many-to-many relationship through a join table
+- notes (String)
+- createdAt (LocalDateTime)
+- updatedAt (LocalDateTime)
+```
 
-Day 5-6: User Role - Vehicle Registration
-	•	Backend: Create APIs for vehicle registration and listing vehicles.
-	•	Frontend: Develop forms for users to register vehicles and view their own registered vehicles.
-	•	Save vehicle details in the database.
+### Entity Relationships
+- One User can register/own multiple Vehicles (One-to-Many)
+- A Category can have multiple Inventory Items (One-to-Many)
+- A Vehicle can have multiple VehicleMovements (One-to-Many)
+- A VehicleMovement can involve multiple Inventory Items (Many-to-Many)
+- Each User has one Role (One-to-One)
+- A LogisticsCoordinator (User) can monitor multiple VehicleMovements (One-to-Many)
 
-⸻
+## Form Validations
 
-Day 7-8: Admin Role - Category Management
-	•	Backend: Implement CRUD APIs for categories (e.g., Electronics, Food, etc.).
-	•	Frontend: Develop a dashboard for Admin to create, edit, delete, and list categories.
-	•	Add validation checks and alerts.
+### User Registration Form
+```
+- Username: Required, 5-20 characters, alphanumeric
+- Password: Required, min 8 characters, must contain at least one uppercase, one lowercase, one number, one special character
+- Email: Required, valid email format
+- First Name: Required, 2-50 characters, letters only
+- Last Name: Required, 2-50 characters, letters only
+- Phone Number: Required, valid phone format (with country code validation)
+```
 
-⸻
+### Vehicle Registration Form
+```
+- Registration Number: Required, unique, format validation based on country standards
+- Vehicle Type: Required, dropdown selection
+- Capacity: Required, positive number
+- Model: Required, 2-50 characters
+- Manufacturer: Required, dropdown selection
+- Manufacturing Year: Required, between 1950 and current year
+- Current Status: Required, dropdown selection
+- Last Maintenance Date: Optional, date not in future
+- Current Location: Required if status is not MAINTENANCE
+- GPS Enabled: Boolean checkbox
+- Fuel Efficiency: Optional, positive number
+```
 
-Day 9-10: Logistics Coordinator - Vehicle Monitoring & Quality Check
-	•	Backend:
-	•	Implement an API to update vehicle location periodically.
-	•	Implement an API for goods quality check (status update, issue reporting).
-	•	Frontend:
-	•	Display real-time vehicle movement data.
-	•	Allow logistics coordinators to mark goods as “Quality Approved” or “Defective”.
+### Category Creation Form (Admin)
+```
+- Name: Required, 3-50 characters, unique
+- Description: Optional, max 500 characters
+- Storage Requirements: Optional, max 500 characters
+- Is Perishable: Boolean checkbox
+- Shelf Life: Required if isPerishable is true, positive integer
+```
 
-⸻
+### Inventory Item Form
+```
+- Name: Required, 3-100 characters
+- Category: Required, dropdown selection from available categories
+- Quantity: Required, positive integer
+- Unit of Measure: Required, dropdown selection
+- Location: Required, valid warehouse location code format
+- Batch Number: Optional, alphanumeric
+- Expiry Date: Required if category is perishable, date in future
+- Quality Status: Required, dropdown selection
+- Acquisition Date: Required, not in future
+- Minimum Stock Level: Optional, positive integer
+- Price: Optional, positive decimal number
+- Supplier: Optional, 3-100 characters
+- Notes: Optional, max 1000 characters
+```
 
-Day 11-12: Admin Role - Analytics Dashboard
-	•	Backend: Implement APIs for fetching analytics data:
-	•	Total goods in warehouse
-	•	Number of active vehicles
-	•	Defective vs. approved goods percentage
-	•	Frontend: Display analytics using charts and tables.
+### Vehicle Movement Form
+```
+- Vehicle: Required, dropdown selection from available vehicles
+- Departure Location: Required, valid location format
+- Destination Location: Required, valid location format
+- Departure Time: Required, date-time not in past
+- Estimated Arrival Time: Required, date-time after departure time
+- Status: Required, dropdown selection
+- Assigned Coordinator: Required, dropdown selection from users with LOGISTICS_COORDINATOR role
+- Inventory Items: Optional multiple selection from available inventory
+- Notes: Optional, max 1000 characters
+```
 
-⸻
+## Java Stream Filters to be Implemented
 
-Day 13-14: Testing & Bug Fixing
-	•	Perform unit tests and integration tests in Spring Boot.
-	•	Conduct UI testing and fix bugs in Angular.
+1. **Filter available vehicles:**
+```java
+List<Vehicle> availableVehicles = vehicles.stream()
+    .filter(v -> v.getCurrentStatus() == VehicleStatus.AVAILABLE)
+    .collect(Collectors.toList());
+```
 
-⸻
+2. **Filter vehicles by owner:**
+```java
+List<Vehicle> userVehicles = vehicles.stream()
+    .filter(v -> v.getOwner().getId().equals(userId))
+    .collect(Collectors.toList());
+```
 
-Day 15: Deployment & Documentation
-	•	Deploy backend to Spring Boot server (e.g., AWS, Heroku, or local Tomcat).
-	•	Deploy frontend using Firebase, Vercel, or Netlify.
-	•	Write API documentation (Swagger).
-	•	Final testing and project submission.
+3. **Filter inventory by category:**
+```java
+List<InventoryItem> categoryItems = inventory.stream()
+    .filter(item -> item.getCategory().getId().equals(categoryId))
+    .collect(Collectors.toList());
+```
 
-⸻
+4. **Filter low stock inventory items:**
+```java
+List<InventoryItem> lowStockItems = inventory.stream()
+    .filter(item -> item.getQuantity() < item.getMinimumStockLevel())
+    .sorted(Comparator.comparing(item -> 
+        (double)item.getQuantity() / item.getMinimumStockLevel()))
+    .collect(Collectors.toList());
+```
 
-Would you like a GitHub repository setup guide for this?
+5. **Filter expired or soon-to-expire inventory:**
+```java
+LocalDate today = LocalDate.now();
+LocalDate warningDate = today.plusDays(7);
+
+List<InventoryItem> expiringItems = inventory.stream()
+    .filter(item -> item.getExpiryDate() != null 
+        && (item.getExpiryDate().isBefore(today) 
+            || item.getExpiryDate().isBefore(warningDate)))
+    .sorted(Comparator.comparing(InventoryItem::getExpiryDate))
+    .collect(Collectors.toList());
+```
+
+6. **Filter vehicles by maintenance requirement:**
+```java
+LocalDate maintenanceThreshold = LocalDate.now().minusMonths(3);
+
+List<Vehicle> vehiclesNeedingMaintenance = vehicles.stream()
+    .filter(v -> v.getLastMaintenanceDate() == null 
+        || v.getLastMaintenanceDate().isBefore(maintenanceThreshold))
+    .sorted(Comparator.comparing(
+        v -> v.getLastMaintenanceDate() == null ? 
+            LocalDate.of(1900, 1, 1) : v.getLastMaintenanceDate()))
+    .collect(Collectors.toList());
+```
+
+7. **Filter active vehicle movements by coordinator:**
+```java
+List<VehicleMovement> coordinatorMovements = movements.stream()
+    .filter(m -> m.getAssignedCoordinator().getId().equals(coordinatorId))
+    .filter(m -> m.getStatus() == MovementStatus.IN_TRANSIT 
+        || m.getStatus() == MovementStatus.SCHEDULED)
+    .sorted(Comparator.comparing(VehicleMovement::getDepartureTime))
+    .collect(Collectors.toList());
+```
+
+8. **Group inventory by quality status for analytics:**
+```java
+Map<QualityStatus, Long> inventoryByQuality = inventory.stream()
+    .collect(Collectors.groupingBy(
+        InventoryItem::getQualityStatus, 
+        Collectors.counting()));
+```
+
+9. **Calculate total inventory value by category:**
+```java
+Map<Category, BigDecimal> valueByCategory = inventory.stream()
+    .collect(Collectors.groupingBy(
+        InventoryItem::getCategory,
+        Collectors.reducing(
+            BigDecimal.ZERO,
+            item -> item.getPrice().multiply(new BigDecimal(item.getQuantity())),
+            BigDecimal::add)));
+```
+
+10. **Find delayed vehicles:**
+```java
+LocalDateTime now = LocalDateTime.now();
+
+List<VehicleMovement> delayedMovements = movements.stream()
+    .filter(m -> m.getStatus() == MovementStatus.IN_TRANSIT)
+    .filter(m -> m.getEstimatedArrivalTime().isBefore(now))
+    .sorted(Comparator.comparing(VehicleMovement::getEstimatedArrivalTime))
+    .collect(Collectors.toList());
+```
+
+These specifications provide a solid foundation for developing the inventory management system with Spring Boot and Angular, focusing on the data structure, validations, and business logic required for the three roles: User, Admin, and Logistics Coordinator.​​​​​​​​​​​​​​​​
+
 
 #CLAUDE
 
