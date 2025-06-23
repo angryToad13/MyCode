@@ -1,50 +1,55 @@
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlText;
+@Service
+public class UserService {
 
-public class AdditionalField {
+    @Autowired
+    private UserRepository userRepository;
 
-    @JacksonXmlProperty(isAttribute = true)
-    public String name;
+    public User updateUserDynamically(DynamicUpdateDTO dto) {
+        User user = userRepository.findById(dto.getId())
+                                  .orElseThrow(() -> new RuntimeException("User not found"));
 
-    @JacksonXmlText
-    public String value;
-}
+        Map<String, Object> fields = dto.getFields();
+        Class<?> clazz = user.getClass();
 
+        for (Map.Entry<String, Object> entry : fields.entrySet()) {
+            try {
+                Field field = clazz.getDeclaredField(entry.getKey());
+                field.setAccessible(true);
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+                // Type conversion if needed
+                Object value = convertValue(entry.getValue(), field.getType());
+                field.set(user, value);
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-@JacksonXmlRootElement(localName = "acknowledgement")
-public class Acknowledgement {
-
-    @JacksonXmlProperty(localName = "brch_code")
-    public String brchCode;
-
-    @JacksonXmlProperty(localName = "filename")
-    public String filename;
-
-    @JacksonXmlProperty(localName = "ref_id")
-    public String refId;
-
-    @JacksonXmlProperty(localName = "tnx_id")
-    public String tnxId;
-
-    @JacksonXmlElementWrapper(useWrapping = false)
-    @JacksonXmlProperty(localName = "additional_field")
-    public List<AdditionalField> additionalFields;
-
-    // Computed map from name to value
-    public Map<String, String> getAdditionalFieldMap() {
-        if (additionalFields == null) return new HashMap<>();
-        Map<String, String> map = new HashMap<>();
-        for (AdditionalField f : additionalFields) {
-            map.put(f.name, f.value);
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                throw new RuntimeException("Error updating field: " + entry.getKey(), e);
+            }
         }
-        return map;
+
+        return userRepository.save(user);
+    }
+
+    public List<User> updateUsersDynamically(List<DynamicUpdateDTO> dtoList) {
+        List<User> updated = new ArrayList<>();
+        for (DynamicUpdateDTO dto : dtoList) {
+            updated.add(updateUserDynamically(dto));
+        }
+        return updated;
+    }
+
+    // Helper: Basic conversion (optional enhancement)
+    private Object convertValue(Object value, Class<?> targetType) {
+        if (value == null) return null;
+        if (targetType.isAssignableFrom(value.getClass())) return value;
+
+        if (targetType == Boolean.class || targetType == boolean.class)
+            return Boolean.parseBoolean(value.toString());
+        if (targetType == Long.class || targetType == long.class)
+            return Long.parseLong(value.toString());
+        if (targetType == Integer.class || targetType == int.class)
+            return Integer.parseInt(value.toString());
+        if (targetType == String.class)
+            return value.toString();
+
+        throw new IllegalArgumentException("Unsupported type conversion for: " + targetType);
     }
 }
