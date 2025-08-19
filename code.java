@@ -40,3 +40,26 @@ for (Map.Entry<String, String> entry : EventFieldMapping.FIELD_MAP.entrySet()) {
         break;
     }
 }
+
+import org.springframework.data.jpa.domain.Specification;
+
+public class EventSpecifications {
+
+    // Common filter: branchCode + countryCode
+    public static Specification<EventEntity> branchAndCountry(String branchCode, String countryCode) {
+        return (root, query, cb) -> cb.and(
+                cb.equal(root.get("branchCode"), branchCode),
+                cb.equal(root.get("countryCode"), countryCode)
+        );
+    }
+
+    // Generic filter for "field = value"
+    public static Specification<EventEntity> equalsField(String fieldName, String value) {
+        return (root, query, cb) -> cb.equal(root.get(fieldName), value);
+    }
+
+    // Exclude statuses
+    public static Specification<EventEntity> statusNotIn(List<String> statuses) {
+        return (root, query, cb) -> cb.not(root.get("status").in(statuses));
+    }
+}
