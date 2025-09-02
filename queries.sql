@@ -1,0 +1,26 @@
+CREATE OR REPLACE TRIGGER trg_upd_tft_p_cst_mo2
+INSTEAD OF UPDATE ON TFT_P_CST_MO2
+FOR EACH ROW
+BEGIN
+    -- Update DPW_EVENT table
+    UPDATE DPW_EVENT EVT
+    SET EVT.REF_ID          = :NEW.REF_ID,
+        EVT.MFR_PARENT_ID   = :NEW.PARENT_ID,
+        EVT.TNX_ID          = :NEW.TNX_ID,
+        EVT.TNX_STAT_CODE   = :NEW.TNX_STAT_CODE,
+        EVT.KA_CODE         = :NEW.KA_CODE,
+        EVT.TNX_TYPE_CODE   = :NEW.TNX_TYPE_CODE,
+        EVT.SUB_TNX_TYPE_CODE = :NEW.SUB_TNX_TYPE_CODE,
+        EVT.PROD_CODE       = :NEW.PROD_CODE,
+        EVT.PROD_STAT_CODE  = :NEW.PROD_STAT_CODE
+    WHERE EVT.EVT_NO = :OLD.EVT_NO
+      AND EVT.BRCH_CODE = :OLD.BRCH_CODE;
+
+    -- If you ever want updates to EXT (DPW_EXTERNAL_TRACK_AND_TRACE),
+    -- you can add a separate UPDATE here for EXT.*
+    -- Example:
+    -- UPDATE DPW_EXTERNAL_TRACK_AND_TRACE EXT
+    -- SET EXT.EB_CUS_FLAG = :NEW.EB_CUS_FLAG
+    -- WHERE EXT.EVENT_ID = :OLD.EVT_ID;
+END;
+/
