@@ -1,15 +1,19 @@
-// src/main/java/com/example/config/TimezoneConfig.java
-package com.example.config;
+@Bean
+public JobRepository jobRepository(DataSource dataSource) throws Exception {
+    JobRepositoryFactoryBean factory = new JobRepositoryFactoryBean();
+    factory.setDataSource(dataSource);
+    factory.setTransactionManager(transactionManager());
+    factory.setIsolationLevelForCreate("ISOLATION_READ_COMMITTED");
+    factory.setTablePrefix("BATCH_");
 
-import jakarta.annotation.PostConstruct;
-import java.util.TimeZone;
-import org.springframework.context.annotation.Configuration;
+    // important part:
+    factory.setJdbcOperations(new JdbcTemplate(dataSource) {{
+        setQueryTimeout(10000);
+    }});
 
-@Configuration
-public class TimezoneConfig {
-    @PostConstruct
-    public void init() {
-        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-        System.out.println("Default timezone set to " + TimeZone.getDefault());
-    }
+    // Force UTC
+    TimeZone utc = TimeZone.getTimeZone("UTC");
+    factory.setTimeZone(utc);
+
+    return factory.getObject();
 }
