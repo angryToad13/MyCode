@@ -1,110 +1,83 @@
-package com.example.batch.config;
+public enum CommonField {
+    BRANCH_CODE,
+    BO_REF_ID,
+    TXN_ID,
+    TXN_TYPE_CODE,
+    TXN_STAT_CODE,
+    BO_STATUS_UPDATE,
+    SUB_TXN_STAT_CODE,
+    PRODUCT_CODE,
+    RELEASE_DTTM
+}
 
-import javax.sql.DataSource;
+default void setCommonFields(
+        T txnRecord,
+        ExternalTandTRequest req,
+        Set<CommonField> fieldsToSet) {
 
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.JobExecutionListener;
-import org.springframework.batch.core.Step;
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
-import org.springframework.batch.core.configuration.support.DefaultBatchConfiguration;
-import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
-import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
-import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.core.repository.support.JobRepositoryFactoryBean;
+    for (CommonField field : fieldsToSet) {
+        switch (field) {
 
-import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.batch.core.launch.support.SimpleJobLauncher;
+            case BRANCH_CODE ->
+                txnRecord.setBrch_code(req.getBranchCode());
 
-import org.springframework.batch.core.step.tasklet.Tasklet;
-import org.springframework.batch.repeat.RepeatStatus;
+            case BO_REF_ID ->
+                txnRecord.setBo_ref_id(
+                    req.getConnexisRequestRefId() != null
+                        ? req.getEventId()
+                        : null
+                );
 
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+            case TXN_ID ->
+                txnRecord.setTxn_id(req.getConnexisRequestTxnId());
 
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.PlatformTransactionManager;
+            case TXN_TYPE_CODE ->
+                txnRecord.setTxn_type_code(
+                    req.getConnexisRequestTxnId() == null
+                        ? req.getTxnTypeCode()
+                        : null
+                );
 
-@Configuration
-@EnableBatchProcessing
-public class BatchConfig {
+            case TXN_STAT_CODE ->
+                txnRecord.setTxn_stat_code(
+                    req.getConnexisRequestTxnId() == null
+                        ? req.getTxnStatCode()
+                        : null
+                );
 
-    // If you choose to inject JobBuilderFactory/StepBuilderFactory provided by @EnableBatchProcessing,
-    // Spring will create them for you. But if you want manual wiring, you can make them from
-    // the JobRepository below.
+            case BO_STATUS_UPDATE ->
+                txnRecord.setBo_status_update(req.getBoStatusUpdate());
 
-    @Bean
-    public JobRepository jobRepository(DataSource dataSource, PlatformTransactionManager txManager) throws Exception {
-        JobRepositoryFactoryBean factory = new JobRepositoryFactoryBean();
-        factory.setDataSource(dataSource);
-        factory.setTransactionManager(txManager);
+            case SUB_TXN_STAT_CODE ->
+                txnRecord.setSub_txn_stat_code(req.getSubTxnStatCode());
 
-        // optional settings:
-        factory.setIsolationLevelForCreate("ISOLATION_READ_COMMITTED");
-        // factory.setTablePrefix("BATCH_"); // default prefix is BATCH_
+            case PRODUCT_CODE ->
+                txnRecord.setProduct_code(req.getProdCode());
 
-        factory.afterPropertiesSet();
-        return factory.getObject();
+            case RELEASE_DTTM ->
+                txnRecord.setBo_release_dttm(DateTimeUtil.getCurrentTimeInCET());
+        }
     }
+}
 
-    @Bean
-    public PlatformTransactionManager transactionManager(DataSource dataSource) {
-        return new DataSourceTransactionManager(dataSource);
-    }
+⸻
 
-    @Bean
-    public JobLauncher jobLauncher(JobRepository jobRepository) throws Exception {
-        SimpleJobLauncher launcher = new SimpleJobLauncher();
-        launcher.setJobRepository(jobRepository);
-        launcher.afterPropertiesSet();
-        return launcher;
-    }
+3️⃣ Pass only the fields you want
+Set<CommonField> fields =
+        EnumSet.of(
+            CommonField.BRANCH_CODE,
+            CommonField.TXN_ID,
+            CommonField.PRODUCT_CODE
+        );
 
-    // Provided by EnableBatchProcessing: if you'd like, inject JobBuilderFactory/StepBuilderFactory
-    @Bean
-    public JobBuilderFactory jobBuilderFactory(JobRepository jobRepository) {
-        return new JobBuilderFactory(jobRepository);
-    }
+xmlStrategy.setCommonFields(txnRecord, request, fields);
 
-    @Bean
-    public StepBuilderFactory stepBuilderFactory(JobRepository jobRepository,
-                                                 PlatformTransactionManager txManager) {
-        return new StepBuilderFactory(jobRepository, txManager);
-    }
+DEFAULT BEHAVE
 
-    // --- Example simple Tasklet Step and Job ---
-
-    @Bean
-    public Step exampleStep(StepBuilderFactory stepBuilderFactory) {
-        return stepBuilderFactory.get("exampleStep")
-                .tasklet(exampleTasklet())
-                .build();
-    }
-
-    @Bean
-    public Tasklet exampleTasklet() {
-        return (contribution, chunkContext) -> {
-            System.out.println("Running example step. Current JVM default timezone: " + java.util.TimeZone.getDefault());
-            // you can still inspect job times etc.
-            return RepeatStatus.FINISHED;
-        };
-    }
-
-    @Bean
-    public Job exampleJob(JobBuilderFactory jobBuilderFactory, Step exampleStep, JobExecutionListener listener) {
-        return jobBuilderFactory.get("exampleJob")
-                .start(exampleStep)
-                .listener(listener)
-                .build();
-    }
-
-    // A simple listener for demonstration - optional.
-    @Bean
-    public JobExecutionListener listener() {
-        return new org.springframework.batch.core.listener.JobExecutionListenerSupport() {
-            @Override
-            public void beforeJob(org.springframework.batch.core.JobExecution jobExecution) {
-                System.out.println("Before job. JobExecution id: " + jobExecution.getId());
-            }
-        };
-    }
+default Set<CommonField> defaultFields() {
+    return EnumSet.of(
+        CommonField.BRANCH_CODE,
+        CommonField.TXN_ID,
+        CommonField.RELEASE_DTTM
+    );
 }
