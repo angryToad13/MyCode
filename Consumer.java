@@ -81,3 +81,23 @@ default Set<CommonField> defaultFields() {
         CommonField.RELEASE_DTTM
     );
 }
+
+
+public static <E extends Enum<E>> Set<E> fromStringArraySafe(
+        String[] values, Class<E> enumClass) {
+
+    Set<E> result = EnumSet.noneOf(enumClass);
+
+    if (values == null) {
+        return result;
+    }
+
+    for (String value : values) {
+        try {
+            result.add(Enum.valueOf(enumClass, value.trim().toUpperCase()));
+        } catch (Exception ignored) {
+            // optionally log here
+        }
+    }
+    return result;
+}
