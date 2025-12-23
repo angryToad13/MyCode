@@ -83,6 +83,33 @@ public final class FieldMapperUtil {
 
 
 
+public enum UserFieldMapping {
+
+    NAME(UserDTO::setName, UserEntity::getFirstName),
+    EMAIL(UserDTO::setEmailId, UserEntity::getEmail),
+    AGE(UserDTO::setAge, UserEntity::getAge);
+
+    private final BiConsumer<UserDTO, Object> targetSetter;
+    private final Function<UserEntity, Object> sourceGetter;
+
+    <T> UserFieldMapping(
+            BiConsumer<UserDTO, T> setter,
+            Function<UserEntity, T> getter
+    ) {
+        this.targetSetter = (BiConsumer<UserDTO, Object>) setter;
+        this.sourceGetter = (Function<UserEntity, Object>) getter;
+    }
+
+    public void apply(UserEntity source, UserDTO target) {
+        Object value = sourceGetter.apply(source);
+        if (value != null) {
+            targetSetter.accept(target, value);
+        }
+    }
+}
+
+
+
 
 import java.util.List;
 import java.util.Map;
