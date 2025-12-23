@@ -84,6 +84,36 @@ public final class FieldMapperUtil {
 
 
 
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public final class FieldMappingHelper {
+
+    private FieldMappingHelper() {}
+
+    public static <E extends Enum<E> & FieldMappingEnum>
+    Map<String, String> toPartialMap(
+            Class<E> enumClass,
+            List<String> requestedFields
+    ) {
+
+        if (requestedFields == null || requestedFields.isEmpty()) {
+            return Map.of();
+        }
+
+        return requestedFields.stream()
+                .map(field -> Enum.valueOf(enumClass, field))
+                .collect(Collectors.toMap(
+                        FieldMappingEnum::getTargetField,
+                        FieldMappingEnum::getSourceField
+                ));
+    }
+}
+
+
+
+
 
 
 
