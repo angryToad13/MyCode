@@ -91,3 +91,15 @@ public class TxnFieldMappingRequest {
 
 
 
+List<String> requestedFields =
+        Optional.ofNullable(externalTandTRequest.getFlags())
+                .map(Flags::getCommonFields)
+                .orElse(Collections.emptyList());
+
+Stream<CommonTxnRecordField> fieldStream =
+        requestedFields.isEmpty()
+                ? EnumSet.allOf(CommonTxnRecordField.class).stream()
+                : requestedFields.stream().map(this::toEnum);
+
+
+
