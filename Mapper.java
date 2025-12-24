@@ -49,3 +49,45 @@ public class MappingContext {
 
 
 
+
+import java.util.function.BiConsumer;
+
+public enum TxnFieldMapping {
+
+    BO_STATUS_UPDATE(TxnMapper::mapBoStatusUpdate),
+    PRODUCT_CODE(TxnMapper::mapProductCode),
+    RELEASE_DTTM(TxnMapper::mapReleaseDttm);
+
+    private final BiConsumer<TxnMapper, MappingContext> mapperCall;
+
+    TxnFieldMapping(BiConsumer<TxnMapper, MappingContext> mapperCall) {
+        this.mapperCall = mapperCall;
+    }
+
+    public void apply(TxnMapper mapper, MappingContext context) {
+        mapperCall.accept(mapper, context);
+    }
+}
+
+
+
+
+
+import java.util.List;
+
+public class TxnFieldMappingRequest {
+
+    private List<TxnFieldMapping> fields;
+
+    public List<TxnFieldMapping> getFields() {
+        return fields;
+    }
+
+    public void setFields(List<TxnFieldMapping> fields) {
+        this.fields = fields;
+    }
+}
+
+
+
+
