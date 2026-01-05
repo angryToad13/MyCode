@@ -1,334 +1,166 @@
-package com.bnpparbas.dpw.docstore.service;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.env.Environment;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.RestClientException;
 
-import com.bnpparbas.dpw.docstore.model.DocumentDetails;
-import com.bnpparbas.dpw.docstore.model.Request;
-import com.bnpparbas.dpw.docstore.model.StringResponse;
-import com.bnpparbas.dpw.docstore.service.ApigeeDocumentService;
-import com.bnpparbas.dpw.docstore.util.DocumentUtil;
+import java.util.Collections;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class TracerAdviceServiceImplTest {
+class ExternalTNTHelperTest {
 
-```
-@Mock
-private Environment env;
+    @Mock
+    private ControllerUtils controllerUtils;
 
-@Mock
-private RequestApi requestApi;
+    @Mock
+    private TxnRecordMapper txnRecordMapper;
 
-@Mock
-private ApigeeDocumentService apigeeDocumentService;
+    @InjectMocks
+    private ExternalTNTHelper externalTNTHelper;
 
-@Mock
-private DocumentUtil documentUtil;
+    @Test
+    void getXmlAttachments_whenNoDocuments_thenReturnNull() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        List<Attachment> result =
+                externalTNTHelper.getXmlAttachments(Collections.emptyList(), request);
+        assertNull(result);
+    }
 
-@InjectMocks
-private TracerAdviceServiceImpl tracerAdviceService;
+    @Test
+    void getXmlAttachments_whenSwiftSource_thenSetSwiftTitle() {
+        DocumentMetaDataDocstoreWithVersioning doc = mock(DocumentMetaDataDocstoreWithVersioning.class);
+        when(doc.isEligibleForConnexis()).thenReturn(true);
+        when(doc.getTitle()).thenReturn("test.pdf");
+        when(doc.getDocumentSource()).thenReturn("SWIFT");
+        when(doc.getDocumentCategory()).thenReturn("12345");
 
-private String testGroup;
-private String testBranchCountryCode;
-private List<DocumentDetails> mockDocumentDetails;
-private Request mockRequest;
+        ExternalTNTRequest request = new ExternalTNTRequest();
 
-@BeforeEach
-void setUp() {
-    testGroup = "TEST_GROUP";
-    testBranchCountryCode = "US_NYC";
-    
-    // Set up private fields using reflection
-    ReflectionTestUtils.setField(tracerAdviceService, "tracerAdvices", 
-        Arrays.asList("advice1", "advice2", "advice3"));
-    ReflectionTestUtils.setField(tracerAdviceService, "technicalUser", "testuser");
+        List<Attachment> result =
+                externalTNTHelper.getXmlAttachments(List.of(doc), request);
 
-    // Mock document details
-    DocumentDetails doc1 = createMockDocumentDetails("1", "REF001", "EVENT001", "US", "NYC");
-    DocumentDetails doc2 = createMockDocumentDetails("2", "REF002", "EVENT002", "US", "NYC");
-    mockDocumentDetails = Arrays.asList(doc1, doc2);
+        assertEquals(1, result.size());
+        assertEquals("SWIFT : 12345", result.get(0).getTitle());
+        assertEquals("test.pdf", result.get(0).getFileName());
+    }
 
-    // Mock request
-    mockRequest = new Request();
-    mockRequest.setBranchCode("NYC");
-    mockRequest.setCountryCode("US");
-    mockRequest.setRfr("RFR001");
-    mockRequest.setLivr("LIVR001");
-}
+    @Test
+    void getXmlAttachments_whenNonSwiftSource_thenUseDocumentValue() {
+        DocumentMetaDataDocstoreWithVersioning doc = mock(DocumentMetaDataDocstoreWithVersioning.class);
+        when(doc.isEligibleForConnexis()).thenReturn(true);
+        when(doc.getTitle()).thenReturn("invoice.xml");
+        when(doc.getDocumentSource()).thenReturn("EMAIL");
 
-private DocumentDetails createMockDocumentDetails(String id, String refId, String eventId, 
-                                                String countryCode, String branchCode) {
-    DocumentDetails doc = new DocumentDetails();
-    doc.setDocumentDataId(id);
-    doc.setReferenceId(refId);
-    doc.setEventId(eventId);
-    doc.setDocumentCategory("CATEGORY");
-    doc.setCountryCode(countryCode);
-    doc.setBranchCode(branchCode);
-    return doc;
-}
+        ExternalTNTRequest request = new ExternalTNTRequest();
 
-@Test
-void testIntegrateTracerAdvices_Success() {
-    // Given
-    String expectedBranchesProperty = "branch1,branch2,branch3";
-    when(env.getProperty("uv.branches." + testGroup)).thenReturn(expectedBranchesProperty);
+        List<Attachment> result =
+                externalTNTHelper.getXmlAttachments(List.of(doc), request);
 
-    // When
-    StringResponse response = tracerAdviceService.integrateTracerAdvices(testGroup);
+        assertEquals("DOCUMENT_VALUE : invoice", result.get(0).getTitle());
+    }
 
-    // Then
-    assertNotNull(response);
-    assertEquals("Integrated tracer advices successfully", response.getResponse());
-    verify(env).getProperty("uv.branches." + testGroup);
-}
+    @Test
+    void setConnexisRequestRefIdFromMFR_whenValuePresent_thenSet() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        request.setMfr("MFR123");
+        request.setBranchCode("BR");
+        request.setCountryCode("IN");
 
-@Test
-void testIntegrateTracerAdvices_EmptyBranchesList() {
-    // Given
-    when(env.getProperty("uv.branches." + testGroup)).thenReturn("");
+        when(controllerUtils.getConnexisReqRefIdThroughMfr("BR", "IN", "MFR123"))
+                .thenReturn("REF123");
 
-    // When
-    StringResponse response = tracerAdviceService.integrateTracerAdvices(testGroup);
+        externalTNTHelper.setConnexisRequestRefIdFromMFR(request);
 
-    // Then
-    assertNotNull(response);
-    assertEquals("Integrated tracer advices successfully", response.getResponse());
-    verify(env).getProperty("uv.branches." + testGroup);
-}
+        assertEquals("REF123", request.getConnexisRequestRefIdMFR());
+    }
 
-@Test
-void testIntegrateTracerAdvices_NullBranchesList() {
-    // Given
-    when(env.getProperty("uv.branches." + testGroup)).thenReturn(null);
+    @Test
+    void setConnexisRequestRefIdFromMFR_whenNoValue_thenDoNothing() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        request.setMfr("MFR123");
 
-    // When
-    StringResponse response = tracerAdviceService.integrateTracerAdvices(testGroup);
+        when(controllerUtils.getConnexisReqRefIdThroughMfr(any(), any(), any()))
+                .thenReturn(null);
 
-    // Then
-    assertNotNull(response);
-    assertEquals("Integrated tracer advices successfully", response.getResponse());
-    verify(env).getProperty("uv.branches." + testGroup);
-}
+        externalTNTHelper.setConnexisRequestRefIdFromMFR(request);
 
-@Test
-void testCreateEventForTracerAdvices_Success() {
-    // Given
-    when(apigeeDocumentService.getDocumentListForTracerFromUVByBranchAndCountry(
-        testBranchCountryCode.split("_")[0], testBranchCountryCode.split("_")[1]))
-        .thenReturn(mockDocumentDetails);
+        assertNull(request.getConnexisRequestRefIdMFR());
+    }
 
-    // When
-    tracerAdviceService.createEventForTracerAdvices(testBranchCountryCode);
+    @Test
+    void getCourierPartnerValue_shouldDelegateToControllerUtils() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        request.setBranchCode("BR");
+        request.setCountryCode("IN");
+        request.setEventId("EVT1");
 
-    // Then
-    verify(apigeeDocumentService).getDocumentListForTracerFromUVByBranchAndCountry("US", "NYC");
-    verify(documentUtil, times(2)).uploadDocumentsToDocStore(any(), any(), any(), any());
-}
+        Courier courier = new Courier();
 
-@Test
-void testCreateEventForTracerAdvices_EmptyDocumentList() {
-    // Given
-    when(apigeeDocumentService.getDocumentListForTracerFromUVByBranchAndCountry(
-        testBranchCountryCode.split("_")[0], testBranchCountryCode.split("_")[1]))
-        .thenReturn(Collections.emptyList());
+        when(controllerUtils.getCourierDetails("BR", "IN", "EVT1"))
+                .thenReturn(courier);
 
-    // When
-    tracerAdviceService.createEventForTracerAdvices(testBranchCountryCode);
+        Courier result = externalTNTHelper.getCourierPartnerValue(request);
 
-    // Then
-    verify(apigeeDocumentService).getDocumentListForTracerFromUVByBranchAndCountry("US", "NYC");
-    verify(documentUtil, never()).uploadDocumentsToDocStore(any(), any(), any(), any());
-}
+        assertSame(courier, result);
+    }
 
-@Test
-void testCreateEventForTracerAdvices_NullDocumentList() {
-    // Given
-    when(apigeeDocumentService.getDocumentListForTracerFromUVByBranchAndCountry(
-        testBranchCountryCode.split("_")[0], testBranchCountryCode.split("_")[1]))
-        .thenReturn(null);
+    @Test
+    void setCommonFields_whenNoFlags_thenApplyAllFields() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        TxnRecord txnRecord = new TxnRecord();
 
-    // When
-    tracerAdviceService.createEventForTracerAdvices(testBranchCountryCode);
+        externalTNTHelper.setCommonFields(txnRecord, request);
 
-    // Then
-    verify(apigeeDocumentService).getDocumentListForTracerFromUVByBranchAndCountry("US", "NYC");
-    verify(documentUtil, never()).uploadDocumentsToDocStore(any(), any(), any(), any());
-}
+        verify(txnRecordMapper, atLeastOnce()).map(any(), any());
+    }
 
-@Test
-void testCreateUVRequestModel_Success() {
-    // Given
-    DocumentDetails documentDetails = createMockDocumentDetails("1", "REF001", "EVENT001", "US", "NYC");
+    @Test
+    void setCommonFields_whenSpecificFieldsProvided_thenApplyOnlyThose() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        Flags flags = new Flags();
+        flags.setCommonFields(List.of(CommonTxnRecordField.FIELD1));
+        request.setFlags(flags);
 
-    // When
-    tracerAdviceService.createUVRequestModel(Arrays.asList(documentDetails), "NYC", "US");
+        TxnRecord txnRecord = new TxnRecord();
 
-    // Then
-    verify(requestApi).createRequest(any(Request.class));
-}
+        externalTNTHelper.setCommonFields(txnRecord, request);
 
-@Test
-void testCreateUVRequestModel_VerifyRequestFields() {
-    // Given
-    DocumentDetails documentDetails = createMockDocumentDetails("1", "REF001", "EVENT001", "US", "NYC");
-    
-    // When
-    tracerAdviceService.createUVRequestModel(Arrays.asList(documentDetails), "NYC", "US");
+        verify(txnRecordMapper, times(1)).map(any(), any());
+    }
 
-    // Then
-    verify(requestApi).createRequest(argThat(request -> {
-        assertEquals("REF001", request.getRfr());
-        assertEquals("EVENT001", request.getLivr());
-        assertEquals("NYC", request.getBranchCode());
-        assertEquals("US", request.getCountryCode());
-        assertEquals("UV", request.getChannelName());
-        assertEquals("03", request.getExternalStatus());
-        assertEquals("03", request.getStatusInuv());
-        assertEquals(LocalDateTime.now().atZone(ZoneOffset.UTC).toLocalDateTime().getDayOfYear(),
-                    request.getRequestCreationDateTime().getDayOfYear());
-        assertEquals("Completed", request.getStatus());
-        return true;
-    }));
-}
+    @Test
+    void getCustomerReference_whenCustomerIdStartsWithBranch_thenReturnCustomerId() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        request.setCustomerId("BR12345");
+        request.setBranchCode("BR");
+        request.setEventId("EVT");
+        request.setProdCode("PRD");
 
-@Test
-void testCreateRequestAndUploadDocs_Success() {
-    // Given
-    CompletableFuture<Request> mockFuture = CompletableFuture.completedFuture(mockRequest);
-    when(requestApi.createRequest(any(Request.class))).thenReturn(mockFuture);
+        String result = externalTNTHelper.getCustomerReference(request);
 
-    // When
-    tracerAdviceService.createRequestAndUploadDocs(mockRequest, mockDocumentDetails);
+        assertEquals("BR12345", result);
+    }
 
-    // Then
-    verify(requestApi).createRequest(mockRequest);
-    verify(documentUtil).uploadDocumentsToDocStore(
-        eq(mockDocumentDetails), 
-        eq(mockRequest), 
-        any(), 
-        eq(mockRequest.getEventId())
-    );
-}
+    @Test
+    void getCustomerReference_whenShortCustomerId_thenPrefixBranch() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        request.setCustomerId("123");
+        request.setBranchCode("BR");
 
-@Test
-void testCreateRequestAndUploadDocs_HttpStatusException() {
-    // Given
-    CompletableFuture<Request> mockFuture = new CompletableFuture<>();
-    mockFuture.completeExceptionally(new RuntimeException("HTTP 404 Not Found"));
-    when(requestApi.createRequest(any(Request.class))).thenReturn(mockFuture);
+        String result = externalTNTHelper.getCustomerReference(request);
 
-    // When
-    tracerAdviceService.createRequestAndUploadDocs(mockRequest, mockDocumentDetails);
+        assertEquals("BR123", result);
+    }
 
-    // Then
-    verify(requestApi).createRequest(mockRequest);
-    verify(documentUtil, never()).uploadDocumentsToDocStore(any(), any(), any(), any());
-    // Should log error message about HTTP exception
-}
-
-@Test
-void testCreateRequestAndUploadDocs_RestClientException() {
-    // Given
-    CompletableFuture<Request> mockFuture = new CompletableFuture<>();
-    mockFuture.completeExceptionally(new RestClientException("Connection timeout"));
-    when(requestApi.createRequest(any(Request.class))).thenReturn(mockFuture);
-
-    // When
-    tracerAdviceService.createRequestAndUploadDocs(mockRequest, mockDocumentDetails);
-
-    // Then
-    verify(requestApi).createRequest(mockRequest);
-    verify(documentUtil, never()).uploadDocumentsToDocStore(any(), any(), any(), any());
-    // Should log error message about RestClient exception
-}
-
-@Test
-void testCreateRequestAndUploadDocs_GenericException() {
-    // Given
-    CompletableFuture<Request> mockFuture = new CompletableFuture<>();
-    mockFuture.completeExceptionally(new RuntimeException("Unexpected error"));
-    when(requestApi.createRequest(any(Request.class))).thenReturn(mockFuture);
-
-    // When
-    tracerAdviceService.createRequestAndUploadDocs(mockRequest, mockDocumentDetails);
-
-    // Then
-    verify(requestApi).createRequest(mockRequest);
-    verify(documentUtil, never()).uploadDocumentsToDocStore(any(), any(), any(), any());
-    // Should log generic error message
-}
-
-@Test
-void testIntegrateTracerAdvices_WithSpecialCharactersInGroup() {
-    // Given
-    String specialGroup = "TEST-GROUP_123";
-    when(env.getProperty("uv.branches." + specialGroup)).thenReturn("branch1,branch2");
-
-    // When
-    StringResponse response = tracerAdviceService.integrateTracerAdvices(specialGroup);
-
-    // Then
-    assertNotNull(response);
-    assertEquals("Integrated tracer advices successfully", response.getResponse());
-    verify(env).getProperty("uv.branches." + specialGroup);
-}
-
-@Test
-void testCreateEventForTracerAdvices_WithDifferentBranchCountryFormat() {
-    // Given
-    String branchCountryCode = "UK_LON";
-    when(apigeeDocumentService.getDocumentListForTracerFromUVByBranchAndCountry("UK", "LON"))
-        .thenReturn(mockDocumentDetails);
-
-    // When
-    tracerAdviceService.createEventForTracerAdvices(branchCountryCode);
-
-    // Then
-    verify(apigeeDocumentService).getDocumentListForTracerFromUVByBranchAndCountry("UK", "LON");
-}
-
-@Test
-void testCreateUVRequestModel_WithEmptyDocumentList() {
-    // Given
-    List<DocumentDetails> emptyList = Collections.emptyList();
-
-    // When
-    tracerAdviceService.createUVRequestModel(emptyList, "NYC", "US");
-
-    // Then
-    // Should handle empty list gracefully
-    verify(requestApi, never()).createRequest(any(Request.class));
-}
-
-@Test
-void testCreateUVRequestModel_WithNullDocumentList() {
-    // When & Then
-    assertDoesNotThrow(() -> {
-        tracerAdviceService.createUVRequestModel(null, "NYC", "US");
-    });
-    
-    verify(requestApi, never()).createRequest(any(Request.class));
-}
-```
-
+    @Test
+    void getCustomerReference_whenBlankInputs_thenReturnNull() {
+        ExternalTNTRequest request = new ExternalTNTRequest();
+        assertNull(externalTNTHelper.getCustomerReference(request));
+    }
 }
