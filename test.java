@@ -1,127 +1,132 @@
-package com.bnpparibas.mql.strategy;
+package com.bnpparibas.mql.helper;
 
-import com.bnpparibas.dpw.error.exception.DpwException;
+import com.bnpparibas.dpw.controller.model.RequestEvent;
+import com.bnpparibas.dpw.mql.model.AdditionalStatusData;
 import com.bnpparibas.dpw.mql.model.ExternalTNTRequest;
-import com.bnpparibas.mql.bean.externalTrackAndTrace.AdditionalField;
-import com.bnpparibas.mql.bean.externalTrackAndTrace.Attachment;
-import com.bnpparibas.mql.bean.externalTrackAndTrace.TnxRecord;
-import jakarta.xml.bind.JAXBContext;
-import jakarta.xml.bind.JAXBException;
-import jakarta.xml.bind.Marshaller;
+import com.bnpparibas.dpw.referential.model.ExternalTrackAndTraceMapping;
+import com.bnpparibas.mql.model.RequestExtended;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.MockedStatic;
-
-import java.io.File;
-import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class XmlStrategyTest {
+class CXTHelperTest {
 
-    @TempDir
-    Path tempDir;
+    private CXTHelper helper;
 
-    private final XmlStrategy<TnxRecord> strategy = new TestXmlStrategy();
-
-    @Test
-    void shouldGenerateXmlFileSuccessfully() throws Exception {
-        TnxRecord record = new TnxRecord();
-        String eventId = "EVT123";
-
-        File file = strategy.generateXmlFile(
-                eventId,
-                record,
-                tempDir.toString()
-        );
-
-        assertNotNull(file);
-        assertTrue(file.exists());
-        assertTrue(file.getName().contains(eventId));
+    @BeforeEach
+    void setUp() {
+        helper = new CXTHelper();
     }
 
     @Test
-    void shouldThrowDpwExceptionWhenJaxbFails() throws Exception {
-        TnxRecord record = new TnxRecord();
+    void shouldReturnNullWhenMappingIsNull() {
+        ExternalTNTRequest result =
+                helper.toExternalTNTRequest(null, mock(RequestExtended.class), null);
 
-        try (MockedStatic<JAXBContext> mocked = mockStatic(JAXBContext.class)) {
-            mocked.when(() -> JAXBContext.newInstance(any(Class.class)))
-                    .thenThrow(new JAXBException("boom"));
-
-            assertThrows(DpwException.class, () ->
-                    strategy.generateXmlFile(
-                            "EVT_FAIL",
-                            record,
-                            tempDir.toString()
-                    )
-            );
-        }
+        assertNull(result);
     }
 
     @Test
-    void shouldSetAttachmentsAndCourierWhenCourierPresent() {
-        TnxRecord record = spy(new TnxRecord());
-        ExternalTNTRequest request = mock(ExternalTNTRequest.class);
+    void shouldReturnNullWhenRequestIsNull() {
+        ExternalTNTRequest result =
+                helper.toExternalTNTRequest(mock(ExternalTrackAndTraceMapping.class), null, null);
 
-        ExternalTNTRequest.CourierPartnerWayBill courier =
-                mock(ExternalTNTRequest.CourierPartnerWayBill.class);
+        assertNull(result);
+    }
 
-        when(request.getCourierPartnerWayBill()).thenReturn(courier);
-        when(courier.getCourierPartnerCategory()).thenReturn("DHL");
-        when(courier.getCourierPartnerWaybillNo()).thenReturn("WB123");
+    @Test
+    void shouldPopulateFieldsFromRequestWhenEventIsNull() {
+        ExternalTrackAndTraceMapping mapping = mock(ExternalTrackAndTraceMapping.class);
+        RequestExtended request = mock(RequestExtended.class);
+
+        when(request.getBranchCode()).thenReturn("BR");
+        when(request.getCountryCode()).thenReturn("IN");
         when(request.getEventId()).thenReturn("EVT1");
+        when(request.getConnexisRequestRefId()).thenReturn("REF1");
+        when(request.getConnexisRequestTxnId()).thenReturn("TXN1");
+        when(request.getEbCusId()).thenReturn("EBCUS");
+        when(request.getProdCode()).thenReturn("PROD");
 
-        List<Attachment> attachments = Collections.emptyList();
+        when(mapping.getTxnTypeCode()).thenReturn("TT");
+        when(mapping.getTxnStatCode()).thenReturn("TS");
+        when(mapping.getStatusCxt()).thenReturn("CTX");
+        when(mapping.getProdCode()).thenReturn(null);
 
-        strategy.setAttachmentAndCourier(record, request, attachments);
+        ExternalTNTRequest result =
+                helper.toExternalTNTRequest(mapping, request, null);
 
-        verify(record).setAttachments(attachments);
-        verify(record).setCourier_partner("DHL");
-        verify(record).setCourier_partner_waybill_no("WB123");
+        assertNotNull(result);
+        assertEquals("BR", result.getBranchCode());
+        assertEquals("IN", result.getCountryCode());
+        assertEquals("EVT1", result.getEventId());
+        assertEquals("REF1", result.getConnexisRequestRefId());
+        assertEquals("TXN1", result.getConnexisRequestTxnId());
+        assertEquals("EVT1", result.getBoRefId());
+        assertEquals("EBCUS", result.getEbCusId());
+        assertEquals("TT", result.getTxnTypeCode());
+        assertEquals("TS", result.getTxnStatCode());
+        assertEquals("PROD", result.getProdCode());
+        assertEquals("CTX", result.getStatusCxt());
 
-        List<AdditionalField> fields = record.getAdditionalFields();
-        assertEquals(1, fields.size());
-        assertEquals("mo_event_id", fields.get(0).getName());
+        AdditionalStatusData flags = result.getFlags();
+        assertNotNull(flags);
+        assertTrue(flags.isCourierFlag());
+        assertTrue(flags.isConnexisRequestRefIdMprFlag());
+        assertTrue(flags.isDocAttachmentFlag());
     }
 
     @Test
-    void shouldSetAttachmentsAndAdditionalFieldWhenCourierAbsent() {
-        TnxRecord record = spy(new TnxRecord());
-        ExternalTNTRequest request = mock(ExternalTNTRequest.class);
+    void shouldPopulateFieldsFromEventWhenEventIsPresent() {
+        ExternalTrackAndTraceMapping mapping = mock(ExternalTrackAndTraceMapping.class);
+        RequestExtended request = mock(RequestExtended.class);
+        RequestEvent event = mock(RequestEvent.class);
 
-        when(request.getCourierPartnerWayBill()).thenReturn(null);
-        when(request.getEventId()).thenReturn("EVT2");
+        when(event.getId()).thenReturn("EVT_EVT");
+        when(event.getConnexisRequestRefId()).thenReturn("REF_EVT");
+        when(event.getConnexisRequestTxnId()).thenReturn("TXN_EVT");
+        when(event.getMfr()).thenReturn("MFR");
+        when(event.getCurCode()).thenReturn("EUR");
+        when(event.getCustMstNo()).thenReturn("CUST1");
 
-        strategy.setAttachmentAndCourier(
-                record,
-                request,
-                Collections.emptyList()
-        );
+        when(request.getBranchCode()).thenReturn("BR");
+        when(request.getCountryCode()).thenReturn("FR");
+        when(request.getEbCusId()).thenReturn("EBCUS");
 
-        verify(record).setAttachments(any());
-        verify(record, never()).setCourier_partner(any());
-        verify(record, never()).setCourier_partner_waybill_no(any());
+        when(mapping.getTxnTypeCode()).thenReturn("");
+        when(mapping.getTxnStatCode()).thenReturn("");
+        when(mapping.getStatusCxt()).thenReturn("CTX");
+        when(mapping.getProdCode()).thenReturn("PROD_EVT");
 
-        assertEquals(1, record.getAdditionalFields().size());
+        ExternalTNTRequest result =
+                helper.toExternalTNTRequest(mapping, request, event);
+
+        assertNotNull(result);
+        assertEquals("EVT_EVT", result.getEventId());
+        assertEquals("REF_EVT", result.getConnexisRequestRefId());
+        assertEquals("TXN_EVT", result.getConnexisRequestTxnId());
+        assertEquals("MFR", result.getMfr());
+        assertEquals("EUR", result.getCurCode());
+        assertEquals("CUST1", result.getCustomerId());
+        assertEquals("PROD_EVT", result.getProdCode());
+
+        assertNull(result.getTxnTypeCode());
+        assertNull(result.getTxnStatCode());
     }
 
-    private static class TestXmlStrategy implements XmlStrategy<TnxRecord> {
+    @Test
+    void shouldSetBoRefIdToNullWhenEventIdIsBlank() {
+        ExternalTrackAndTraceMapping mapping = mock(ExternalTrackAndTraceMapping.class);
+        RequestExtended request = mock(RequestExtended.class);
 
-        @Override
-        public String getProductCode() {
-            return "TEST";
-        }
+        when(request.getEventId()).thenReturn("   ");
+        when(request.getBranchCode()).thenReturn("BR");
+        when(request.getCountryCode()).thenReturn("IN");
 
-        @Override
-        public File generateXml(
-                ExternalTNTRequest externalTandTRequest,
-                String xmlFilePath,
-                List<Attachment> documentAttachments
-        ) {
-            return null;
-        }
+        ExternalTNTRequest result =
+                helper.toExternalTNTRequest(mapping, request, null);
+
+        assertNull(result.getBoRefId());
     }
 }
