@@ -1,123 +1,127 @@
 package com.bnpparibas.mql.strategy;
 
+import com.bnpparibas.dpw.error.exception.DpwException;
 import com.bnpparibas.dpw.mql.model.ExternalTNTRequest;
+import com.bnpparibas.mql.bean.externalTrackAndTrace.AdditionalField;
 import com.bnpparibas.mql.bean.externalTrackAndTrace.Attachment;
 import com.bnpparibas.mql.bean.externalTrackAndTrace.TnxRecord;
-import org.junit.jupiter.api.BeforeEach;
+import jakarta.xml.bind.JAXBContext;
+import jakarta.xml.bind.JAXBException;
+import jakarta.xml.bind.Marshaller;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-class XmlStrategyContextTest {
+class XmlStrategyTest {
 
-    @Mock
-    private XmlStrategy<TnxRecord> strategyA;
+    @TempDir
+    Path tempDir;
 
-    @Mock
-    private XmlStrategy<TnxRecord> strategyB;
+    private final XmlStrategy<TnxRecord> strategy = new TestXmlStrategy();
 
-    @Mock
-    private ExternalTNTRequest externalTNTRequest;
+    @Test
+    void shouldGenerateXmlFileSuccessfully() throws Exception {
+        TnxRecord record = new TnxRecord();
+        String eventId = "EVT123";
 
-    private XmlStrategyContext xmlStrategyContext;
+        File file = strategy.generateXmlFile(
+                eventId,
+                record,
+                tempDir.toString()
+        );
 
-    @BeforeEach
-    void setUp() {
-        when(strategyA.getProductCode()).thenReturn("PROD_A");
-        when(strategyB.getProductCode()).thenReturn("PROD_B");
-
-        Set<XmlStrategy<? extends TnxRecord>> strategies = new HashSet<>();
-        strategies.add(strategyA);
-        strategies.add(strategyB);
-
-        xmlStrategyContext = new XmlStrategyContext(strategies);
+        assertNotNull(file);
+        assertTrue(file.exists());
+        assertTrue(file.getName().contains(eventId));
     }
 
     @Test
-    void shouldDelegateGenerateXmlToCorrectStrategy() {
-        File expectedFile = new File("test.xml");
+    void shouldThrowDpwExceptionWhenJaxbFails() throws Exception {
+        TnxRecord record = new TnxRecord();
+
+        try (MockedStatic<JAXBContext> mocked = mockStatic(JAXBContext.class)) {
+            mocked.when(() -> JAXBContext.newInstance(any(Class.class)))
+                    .thenThrow(new JAXBException("boom"));
+
+            assertThrows(DpwException.class, () ->
+                    strategy.generateXmlFile(
+                            "EVT_FAIL",
+                            record,
+                            tempDir.toString()
+                    )
+            );
+        }
+    }
+
+    @Test
+    void shouldSetAttachmentsAndCourierWhenCourierPresent() {
+        TnxRecord record = spy(new TnxRecord());
+        ExternalTNTRequest request = mock(ExternalTNTRequest.class);
+
+        ExternalTNTRequest.CourierPartnerWayBill courier =
+                mock(ExternalTNTRequest.CourierPartnerWayBill.class);
+
+        when(request.getCourierPartnerWayBill()).thenReturn(courier);
+        when(courier.getCourierPartnerCategory()).thenReturn("DHL");
+        when(courier.getCourierPartnerWaybillNo()).thenReturn("WB123");
+        when(request.getEventId()).thenReturn("EVT1");
+
         List<Attachment> attachments = Collections.emptyList();
 
-        when(externalTNTRequest.getProdCode()).thenReturn("PROD_A");
-        when(strategyA.generateXml(externalTNTRequest, "/tmp", attachments))
-                .thenReturn(expectedFile);
+        strategy.setAttachmentAndCourier(record, request, attachments);
 
-        File result = xmlStrategyContext.generateXml(
-                externalTNTRequest,
-                "/tmp",
-                attachments
-        );
+        verify(record).setAttachments(attachments);
+        verify(record).setCourier_partner("DHL");
+        verify(record).setCourier_partner_waybill_no("WB123");
 
-        assertNotNull(result);
-        assertEquals(expectedFile, result);
-        verify(strategyA, times(1))
-                .generateXml(externalTNTRequest, "/tmp", attachments);
-        verify(strategyB, never()).generateXml(any(), any(), any());
+        List<AdditionalField> fields = record.getAdditionalFields();
+        assertEquals(1, fields.size());
+        assertEquals("mo_event_id", fields.get(0).getName());
     }
 
     @Test
-    void shouldUseAnotherStrategyBasedOnProductCode() {
-        File expectedFile = new File("test-b.xml");
-        List<Attachment> attachments = Collections.emptyList();
+    void shouldSetAttachmentsAndAdditionalFieldWhenCourierAbsent() {
+        TnxRecord record = spy(new TnxRecord());
+        ExternalTNTRequest request = mock(ExternalTNTRequest.class);
 
-        when(externalTNTRequest.getProdCode()).thenReturn("PROD_B");
-        when(strategyB.generateXml(externalTNTRequest, "/path", attachments))
-                .thenReturn(expectedFile);
+        when(request.getCourierPartnerWayBill()).thenReturn(null);
+        when(request.getEventId()).thenReturn("EVT2");
 
-        File result = xmlStrategyContext.generateXml(
-                externalTNTRequest,
-                "/path",
-                attachments
+        strategy.setAttachmentAndCourier(
+                record,
+                request,
+                Collections.emptyList()
         );
 
-        assertEquals(expectedFile, result);
-        verify(strategyB).generateXml(externalTNTRequest, "/path", attachments);
-        verify(strategyA, never()).generateXml(any(), any(), any());
+        verify(record).setAttachments(any());
+        verify(record, never()).setCourier_partner(any());
+        verify(record, never()).setCourier_partner_waybill_no(any());
+
+        assertEquals(1, record.getAdditionalFields().size());
     }
 
-    @Test
-    void shouldThrowExceptionWhenNoStrategyFoundForProductCode() {
-        when(externalTNTRequest.getProdCode()).thenReturn("UNKNOWN");
+    private static class TestXmlStrategy implements XmlStrategy<TnxRecord> {
 
-        assertThrows(NullPointerException.class, () ->
-                xmlStrategyContext.generateXml(
-                        externalTNTRequest,
-                        "/tmp",
-                        Collections.emptyList()
-                )
-        );
-    }
+        @Override
+        public String getProductCode() {
+            return "TEST";
+        }
 
-    @Test
-    void shouldInitializeAllStrategiesInConstructor() {
-        when(strategyA.getProductCode()).thenReturn("PROD_A");
-        when(strategyB.getProductCode()).thenReturn("PROD_B");
-
-        Set<XmlStrategy<? extends TnxRecord>> strategies = new HashSet<>();
-        strategies.add(strategyA);
-        strategies.add(strategyB);
-
-        XmlStrategyContext context = new XmlStrategyContext(strategies);
-
-        when(externalTNTRequest.getProdCode()).thenReturn("PROD_A");
-
-        assertDoesNotThrow(() ->
-                context.generateXml(
-                        externalTNTRequest,
-                        "/tmp",
-                        Collections.emptyList()
-                )
-        );
+        @Override
+        public File generateXml(
+                ExternalTNTRequest externalTandTRequest,
+                String xmlFilePath,
+                List<Attachment> documentAttachments
+        ) {
+            return null;
+        }
     }
 }
