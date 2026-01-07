@@ -1,166 +1,123 @@
+package com.bnpparibas.mql.strategy;
+
+import com.bnpparibas.dpw.mql.model.ExternalTNTRequest;
+import com.bnpparibas.mql.bean.externalTrackAndTrace.Attachment;
+import com.bnpparibas.mql.bean.externalTrackAndTrace.TnxRecord;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.File;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class ExternalTNTHelperTest {
+class XmlStrategyContextTest {
 
     @Mock
-    private ControllerUtils controllerUtils;
+    private XmlStrategy<TnxRecord> strategyA;
 
     @Mock
-    private TxnRecordMapper txnRecordMapper;
+    private XmlStrategy<TnxRecord> strategyB;
 
-    @InjectMocks
-    private ExternalTNTHelper externalTNTHelper;
+    @Mock
+    private ExternalTNTRequest externalTNTRequest;
 
-    @Test
-    void getXmlAttachments_whenNoDocuments_thenReturnNull() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        List<Attachment> result =
-                externalTNTHelper.getXmlAttachments(Collections.emptyList(), request);
-        assertNull(result);
+    private XmlStrategyContext xmlStrategyContext;
+
+    @BeforeEach
+    void setUp() {
+        when(strategyA.getProductCode()).thenReturn("PROD_A");
+        when(strategyB.getProductCode()).thenReturn("PROD_B");
+
+        Set<XmlStrategy<? extends TnxRecord>> strategies = new HashSet<>();
+        strategies.add(strategyA);
+        strategies.add(strategyB);
+
+        xmlStrategyContext = new XmlStrategyContext(strategies);
     }
 
     @Test
-    void getXmlAttachments_whenSwiftSource_thenSetSwiftTitle() {
-        DocumentMetaDataDocstoreWithVersioning doc = mock(DocumentMetaDataDocstoreWithVersioning.class);
-        when(doc.isEligibleForConnexis()).thenReturn(true);
-        when(doc.getTitle()).thenReturn("test.pdf");
-        when(doc.getDocumentSource()).thenReturn("SWIFT");
-        when(doc.getDocumentCategory()).thenReturn("12345");
+    void shouldDelegateGenerateXmlToCorrectStrategy() {
+        File expectedFile = new File("test.xml");
+        List<Attachment> attachments = Collections.emptyList();
 
-        ExternalTNTRequest request = new ExternalTNTRequest();
+        when(externalTNTRequest.getProdCode()).thenReturn("PROD_A");
+        when(strategyA.generateXml(externalTNTRequest, "/tmp", attachments))
+                .thenReturn(expectedFile);
 
-        List<Attachment> result =
-                externalTNTHelper.getXmlAttachments(List.of(doc), request);
+        File result = xmlStrategyContext.generateXml(
+                externalTNTRequest,
+                "/tmp",
+                attachments
+        );
 
-        assertEquals(1, result.size());
-        assertEquals("SWIFT : 12345", result.get(0).getTitle());
-        assertEquals("test.pdf", result.get(0).getFileName());
+        assertNotNull(result);
+        assertEquals(expectedFile, result);
+        verify(strategyA, times(1))
+                .generateXml(externalTNTRequest, "/tmp", attachments);
+        verify(strategyB, never()).generateXml(any(), any(), any());
     }
 
     @Test
-    void getXmlAttachments_whenNonSwiftSource_thenUseDocumentValue() {
-        DocumentMetaDataDocstoreWithVersioning doc = mock(DocumentMetaDataDocstoreWithVersioning.class);
-        when(doc.isEligibleForConnexis()).thenReturn(true);
-        when(doc.getTitle()).thenReturn("invoice.xml");
-        when(doc.getDocumentSource()).thenReturn("EMAIL");
+    void shouldUseAnotherStrategyBasedOnProductCode() {
+        File expectedFile = new File("test-b.xml");
+        List<Attachment> attachments = Collections.emptyList();
 
-        ExternalTNTRequest request = new ExternalTNTRequest();
+        when(externalTNTRequest.getProdCode()).thenReturn("PROD_B");
+        when(strategyB.generateXml(externalTNTRequest, "/path", attachments))
+                .thenReturn(expectedFile);
 
-        List<Attachment> result =
-                externalTNTHelper.getXmlAttachments(List.of(doc), request);
+        File result = xmlStrategyContext.generateXml(
+                externalTNTRequest,
+                "/path",
+                attachments
+        );
 
-        assertEquals("DOCUMENT_VALUE : invoice", result.get(0).getTitle());
+        assertEquals(expectedFile, result);
+        verify(strategyB).generateXml(externalTNTRequest, "/path", attachments);
+        verify(strategyA, never()).generateXml(any(), any(), any());
     }
 
     @Test
-    void setConnexisRequestRefIdFromMFR_whenValuePresent_thenSet() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        request.setMfr("MFR123");
-        request.setBranchCode("BR");
-        request.setCountryCode("IN");
+    void shouldThrowExceptionWhenNoStrategyFoundForProductCode() {
+        when(externalTNTRequest.getProdCode()).thenReturn("UNKNOWN");
 
-        when(controllerUtils.getConnexisReqRefIdThroughMfr("BR", "IN", "MFR123"))
-                .thenReturn("REF123");
-
-        externalTNTHelper.setConnexisRequestRefIdFromMFR(request);
-
-        assertEquals("REF123", request.getConnexisRequestRefIdMFR());
+        assertThrows(NullPointerException.class, () ->
+                xmlStrategyContext.generateXml(
+                        externalTNTRequest,
+                        "/tmp",
+                        Collections.emptyList()
+                )
+        );
     }
 
     @Test
-    void setConnexisRequestRefIdFromMFR_whenNoValue_thenDoNothing() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        request.setMfr("MFR123");
+    void shouldInitializeAllStrategiesInConstructor() {
+        when(strategyA.getProductCode()).thenReturn("PROD_A");
+        when(strategyB.getProductCode()).thenReturn("PROD_B");
 
-        when(controllerUtils.getConnexisReqRefIdThroughMfr(any(), any(), any()))
-                .thenReturn(null);
+        Set<XmlStrategy<? extends TnxRecord>> strategies = new HashSet<>();
+        strategies.add(strategyA);
+        strategies.add(strategyB);
 
-        externalTNTHelper.setConnexisRequestRefIdFromMFR(request);
+        XmlStrategyContext context = new XmlStrategyContext(strategies);
 
-        assertNull(request.getConnexisRequestRefIdMFR());
-    }
+        when(externalTNTRequest.getProdCode()).thenReturn("PROD_A");
 
-    @Test
-    void getCourierPartnerValue_shouldDelegateToControllerUtils() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        request.setBranchCode("BR");
-        request.setCountryCode("IN");
-        request.setEventId("EVT1");
-
-        Courier courier = new Courier();
-
-        when(controllerUtils.getCourierDetails("BR", "IN", "EVT1"))
-                .thenReturn(courier);
-
-        Courier result = externalTNTHelper.getCourierPartnerValue(request);
-
-        assertSame(courier, result);
-    }
-
-    @Test
-    void setCommonFields_whenNoFlags_thenApplyAllFields() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        TxnRecord txnRecord = new TxnRecord();
-
-        externalTNTHelper.setCommonFields(txnRecord, request);
-
-        verify(txnRecordMapper, atLeastOnce()).map(any(), any());
-    }
-
-    @Test
-    void setCommonFields_whenSpecificFieldsProvided_thenApplyOnlyThose() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        Flags flags = new Flags();
-        flags.setCommonFields(List.of(CommonTxnRecordField.FIELD1));
-        request.setFlags(flags);
-
-        TxnRecord txnRecord = new TxnRecord();
-
-        externalTNTHelper.setCommonFields(txnRecord, request);
-
-        verify(txnRecordMapper, times(1)).map(any(), any());
-    }
-
-    @Test
-    void getCustomerReference_whenCustomerIdStartsWithBranch_thenReturnCustomerId() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        request.setCustomerId("BR12345");
-        request.setBranchCode("BR");
-        request.setEventId("EVT");
-        request.setProdCode("PRD");
-
-        String result = externalTNTHelper.getCustomerReference(request);
-
-        assertEquals("BR12345", result);
-    }
-
-    @Test
-    void getCustomerReference_whenShortCustomerId_thenPrefixBranch() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        request.setCustomerId("123");
-        request.setBranchCode("BR");
-
-        String result = externalTNTHelper.getCustomerReference(request);
-
-        assertEquals("BR123", result);
-    }
-
-    @Test
-    void getCustomerReference_whenBlankInputs_thenReturnNull() {
-        ExternalTNTRequest request = new ExternalTNTRequest();
-        assertNull(externalTNTHelper.getCustomerReference(request));
+        assertDoesNotThrow(() ->
+                context.generateXml(
+                        externalTNTRequest,
+                        "/tmp",
+                        Collections.emptyList()
+                )
+        );
     }
 }
