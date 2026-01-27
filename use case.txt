@@ -1,0 +1,241 @@
+📌 Smart Task & Project Management System
+
+Technology Stack:
+	•	Frontend: Angular
+	•	Backend: Java Spring Boot
+	•	Database: H2 / MySQL
+	•	Optional: Liquibase
+
+⸻
+
+🎯 Objective
+
+Build a web application to manage projects and tasks with role-based access.
+Users can create tasks, assign them, and track progress, while Admin manages projects and approvals.
+
+This assignment covers:
+	•	Role-based access
+	•	CRUD operations
+	•	Business logic
+	•	Angular forms & routing
+	•	Spring Boot REST APIs
+	•	Database relationships
+
+⸻
+
+👥 Roles
+
+1️⃣ ADMIN
+	•	Create / Update / Delete Projects
+	•	View all tasks
+	•	Approve or Reject tasks
+	•	Manage users (optional)
+
+2️⃣ USER
+	•	View assigned projects
+	•	Create tasks
+	•	Update task status
+	•	View own tasks
+
+⸻
+
+🧩 Functional Requirements
+
+⸻
+
+1️⃣ Login Module
+
+Create a Login Page with fields:
+	•	Role (ADMIN / USER)
+	•	Username
+	•	Password
+
+✅ After login:
+	•	Redirect to dashboard
+	•	Show menu based on role
+
+⸻
+
+2️⃣ Dashboard & Menu (Role-Based)
+
+If Role = USER
+Menu should show:
+	•	My Projects
+	•	My Tasks
+	•	Create Task
+
+If Role = ADMIN
+Menu should show:
+	•	Projects
+	•	All Tasks
+	•	Task Approval
+
+⸻
+
+3️⃣ Project Management Module (Admin Only)
+
+Features:
+	•	Create Project
+	•	View Project List
+	•	Update Project
+	•	Delete Project
+
+Project Fields:
+	•	Project ID (auto-generated)
+	•	Project Name
+	•	Description
+	•	Start Date
+	•	End Date
+	•	Status (ACTIVE / COMPLETED)
+
+✅ Validations:
+	•	Project name required
+	•	End date must be after start date
+
+⸻
+
+4️⃣ Task Management Module
+
+Features:
+	•	Create Task (User)
+	•	View Task List
+	•	Update Task
+	•	Delete Task (Admin only)
+
+Task Fields:
+	•	Task ID
+	•	Task Title
+	•	Description
+	•	Priority (LOW / MEDIUM / HIGH)
+	•	Status (NEW / IN_PROGRESS / COMPLETED / APPROVED / REJECTED)
+	•	Due Date
+	•	Assigned To (Username)
+	•	Project ID (dropdown)
+
+✅ Business Rules:
+	•	Due date cannot be before today
+	•	Task must belong to a project
+	•	Only creator can edit task (except Admin)
+
+⸻
+
+5️⃣ Task Approval Module (Admin Only)
+
+Workflow:
+	1.	User creates a task → Status = NEW
+	2.	Admin reviews task:
+	•	Approve → Status = APPROVED
+	•	Reject → Status = REJECTED
+	3.	User can update task only if status ≠ APPROVED
+
+✅ Admin should see:
+	•	List of all tasks
+	•	Approve / Reject buttons
+
+⸻
+
+6️⃣ Task Tracking Module
+
+Features:
+	•	Filter tasks by:
+	•	Status
+	•	Priority
+	•	Project
+	•	Search tasks by title
+
+⸻
+
+🔧 Backend Requirements (Spring Boot)
+
+REST APIs
+
+Project APIs
+	•	POST /projects → Create project
+	•	GET /projects → Get all projects
+	•	PUT /projects/{id} → Update project
+	•	DELETE /projects/{id} → Delete project
+
+Task APIs
+	•	POST /tasks → Create task
+	•	GET /tasks → Get all tasks
+	•	GET /tasks/user/{username} → Get user tasks
+	•	PUT /tasks/{id} → Update task
+	•	DELETE /tasks/{id} → Delete task
+	•	PUT /tasks/{id}/approve → Approve task
+	•	PUT /tasks/{id}/reject → Reject task
+
+⸻
+
+🗄️ Database Design
+
+User Table
+	•	id
+	•	username
+	•	password
+	•	role
+
+Project Table
+	•	id
+	•	name
+	•	description
+	•	start_date
+	•	end_date
+	•	status
+
+Task Table
+	•	id
+	•	title
+	•	description
+	•	priority
+	•	status
+	•	due_date
+	•	project_id (FK)
+	•	assigned_to (username)
+
+⸻
+
+🅰️ Angular Requirements
+
+Interns must use:
+
+✅ Angular Concepts:
+	•	Routing with Guards (role-based access)
+	•	Reactive Forms
+	•	Services & HTTP calls
+	•	Components & Modules
+	•	PrimeNG / Material UI (optional)
+
+✅ UI Features:
+	•	Form validations
+	•	Role-based menu rendering
+	•	Task status badges
+	•	Success & error notifications
+
+⸻
+
+⭐ Slightly Challenging Features (Mandatory)
+
+To make it more advanced than beginner level:
+	1.	Role-based routing (Angular Guards)
+	2.	Dropdown populated from backend (Projects, Users)
+	3.	Enum usage in backend (Status, Priority)
+	4.	One-to-Many relationship (Project → Tasks)
+	5.	Basic business logic (approval flow)
+	6.	Global exception handling in Spring Boot
+
+⸻
+
+🚀 Bonus Features (Optional but Impressive)
+	•	Dashboard charts:
+	•	Total projects
+	•	Tasks by status
+	•	Pagination in task list
+	•	Sorting tasks by due date
+	•	JWT-based authentication (advanced)
+	•	NgRx store (optional)
+
+⸻
+
+⏱️ Suggested Duration
+	•	Core Features: 7–10 Days
+	•	With Bonus Features: 12–15 Days
