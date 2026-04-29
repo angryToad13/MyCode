@@ -1,35 +1,54 @@
-function mapToRequest(llmResponse, userResponse) {
-  const result = [];
+import { Injectable } from '@angular/core';
+import { Resolve, ActivatedRouteSnapshot, Router } from '@angular/router';
+import { Observable, EMPTY } from 'rxjs';
+import { switchMap, map, catchError } from 'rxjs/operators';
+import { LlmNavigationServiceService } from './llm-navigation-service.service';
+import { LlmDataServiceService } from './llm-data-service.service';
 
-  // Create lookup maps for fast access
-  const llmMap = new Map(
-    llmResponse.map(item => [item.document_type, item])
-  );
+@Injectable({ providedIn: 'root' })
+export class LlmDataResolver implements Resolve<any> {
 
-  const userMap = new Map(
-    userResponse.map(item => [item.document_type, item])
-  );
+  constructor(
+    private llmNavigationService: LlmNavigationServiceService,
+    private llmDataService: LlmDataServiceService,
+    private router: Router
+  ) {}
 
-  // Create a unique set of all document types
-  const allTypes = new Set([
-    ...llmMap.keys(),
-    ...userMap.keys()
-  ]);
+  resolve(route: ActivatedRouteSnapshot): Observable<any> {
 
-  allTypes.forEach(type => {
-    const llmItem = llmMap.get(type);
-    const userItem = userMap.get(type);
+    const eventId = route.paramMap.get('requestOrEventId') ?? '';
+    const documentId = route.paramMap.get('documentId') ?? '';
+    const documentVersion = Number(route.paramMap.get('documentVersion')) ?? 1;
 
-    result.push({
-      userDocumentType: userItem?.document_type || type,
-      userCopyCount: userItem?.copy_count ?? 0,
-      userOriginalCount: userItem?.original_count ?? 0,
+    const config = {
+      extraction: {
+        getNavData: () => this.llmNavigationService.getExtractionData(),
+        api: this.llmDataService.getDataEvaluation.bind(this.llmDataService),
+        redirect: '/data-extraction'
+      },
+      classification: {
+        getNavData: () => this.llmNavigationService.getClassificationData(),
+        api: this.llmDataService.getDataExtraction.bind(this.llmDataService),
+        redirect: '/data-classification'
+      }
+    };
 
-      llmDocumentType: llmItem?.document_type || null,
-      llmCopyCount: llmItem?.copy_count ?? 0,
-      llmOriginalCount: llmItem?.original_count ?? 0
-    });
-  });
+    const type = route.data['type'] as 'extraction' | 'classification';
+    const selected = config[type];
 
-  return result;
+    return selected.getNavData().pipe(
+      switchMap(data => {
+        if (!data || Object.keys(data).length === 0) {
+          this.router.navigate([selected.redirect]);
+          return EMPTY;
+        }
+        return selected.api(eventId, documentId, documentVersion, data);
+      }),
+      map((res: any) => res.results ?? res.result),
+      catchError(() => {
+        this.router.navigate([selected.redirect]);
+        return EMPTY;
+      })
+    );
+  }
 }
