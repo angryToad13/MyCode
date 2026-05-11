@@ -1,10 +1,16 @@
-this.formGroup.valueChanges
-  .pipe(
-    debounceTime(100),
-    map(values => this.computeTotals(values))
-  )
-  .subscribe(totals => {
-    this.totalSubject.next(totals.total);
-    this.copyTotalSubject.next(totals.copy_count);
-    this.originalTotalSubject.next(totals.original_count);
-  });
+copyTable() {
+
+  const headers = this.cols.map(c => c.header);
+
+  const rows = this.users.map(row =>
+    this.cols.map(col => row[col.field])
+  );
+
+  const text = [
+    headers.join('\t'),
+    ...rows.map(r => r.join('\t'))
+  ].join('\n');
+
+  navigator.clipboard.writeText(text);
+
+}
