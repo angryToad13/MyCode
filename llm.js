@@ -1,16 +1,43 @@
 copyTable() {
 
-  const headers = this.cols.map(c => c.header);
+  let html = `
+    <table border="1" style="border-collapse: collapse;">
+      <tr>
+        <th>Document</th>
+        <th>Original</th>
+        <th>Copy</th>
+        <th>Photocopy</th>
+        <th>Scanned</th>
+      </tr>
+  `;
 
-  const rows = this.users.map(row =>
-    this.cols.map(col => row[col.field])
+  this.users.forEach(row => {
+
+    html += `
+      <tr>
+        <td>${row.document}</td>
+        <td>${row.original}</td>
+        <td>${row.copy}</td>
+        <td>${row.photocopy}</td>
+        <td>${row.scanned}</td>
+      </tr>
+    `;
+
+  });
+
+  html += `</table>`;
+
+  const blob = new Blob(
+    [html],
+    { type: 'text/html' }
   );
 
-  const text = [
-    headers.join('\t'),
-    ...rows.map(r => r.join('\t'))
-  ].join('\n');
+  const data = [
+    new ClipboardItem({
+      'text/html': blob
+    })
+  ];
 
-  navigator.clipboard.writeText(text);
+  navigator.clipboard.write(data);
 
 }
