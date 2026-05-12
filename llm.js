@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   Directive,
   ElementRef,
+  Input,
   Renderer2
 } from '@angular/core';
 
@@ -10,6 +11,12 @@ import {
 })
 export class CopyTableDirective
   implements AfterViewInit {
+
+  @Input('appCopyableTable')
+  tableData: any[] = [];
+
+  @Input()
+  copyColumns: any[] = [];
 
   constructor(
     private el: ElementRef,
@@ -63,12 +70,6 @@ export class CopyTableDirective
       '6px 12px'
     );
 
-    this.renderer.setStyle(
-      button,
-      'cursor',
-      'pointer'
-    );
-
     this.renderer.listen(
       button,
       'click',
@@ -95,139 +96,73 @@ export class CopyTableDirective
 
   async copyTable() {
 
-    const table: HTMLTableElement =
-      this.el.nativeElement.querySelector(
-        'table'
-      );
+    let html = `
+      <table
+        border="1"
+        style="
+          border-collapse: collapse;
+          width: 100%;
+          font-family: Arial;
+        "
+      >
+    `;
 
-    if (!table) {
-      return;
-    }
+    html += `
+      <tr style="background:#f2f2f2;">
+    `;
 
-    const clonedTable =
-      table.cloneNode(true) as HTMLTableElement;
+    this.copyColumns.forEach(col => {
 
-    clonedTable.style.borderCollapse =
-      'collapse';
+      html += `
+        <th
+          style="
+            padding:10px;
+            min-width:${col.width || '120px'};
+            text-align:${col.align || 'left'};
+          "
+        >
+          ${col.header}
+        </th>
+      `;
 
-    clonedTable.style.width =
-      '100%';
+    });
 
-    clonedTable.style.fontFamily =
-      'Arial';
+    html += `</tr>`;
 
-    clonedTable
-      .querySelectorAll('th, td')
-      .forEach((cell: any) => {
+    this.tableData.forEach(row => {
 
-        cell.style.border =
-          '1px solid #d1d5db';
+      html += `<tr>`;
 
-        cell.style.padding =
-          '10px';
+      this.copyColumns.forEach(col => {
 
-        cell.style.minWidth =
-          '120px';
+        let value =
+          row[col.field];
 
-      });
-
-    // Handle normal inputs
-    clonedTable
-      .querySelectorAll('input')
-      .forEach((input: any) => {
-
-        const td =
-          input.closest('td');
-
-        if (td) {
-          td.innerText =
-            input.value || '';
+        if (
+          value === null ||
+          value === undefined
+        ) {
+          value = '';
         }
 
-      });
-
-    // Handle textarea
-    clonedTable
-      .querySelectorAll('textarea')
-      .forEach((textarea: any) => {
-
-        const td =
-          textarea.closest('td');
-
-        if (td) {
-          td.innerText =
-            textarea.value || '';
-        }
+        html += `
+          <td
+            style="
+              padding:10px;
+              text-align:${col.align || 'left'};
+            "
+          >
+            ${value}
+          </td>
+        `;
 
       });
 
-    // Handle PrimeNG dropdown
-    clonedTable
-      .querySelectorAll(
-        '.p-dropdown-label'
-      )
-      .forEach((dropdown: any) => {
+      html += `</tr>`;
 
-        const td =
-          dropdown.closest('td');
+    });
 
-        if (td) {
-
-          td.innerText =
-            dropdown.innerText
-              ?.trim() || '';
-
-        }
-
-      });
-
-    // Handle PrimeNG autocomplete
-    clonedTable
-      .querySelectorAll(
-        '.p-autocomplete'
-      )
-      .forEach((autocomplete: any) => {
-
-        const td =
-          autocomplete.closest('td');
-
-        if (td) {
-
-          const text =
-            autocomplete.innerText
-              ?.replace(/\s+/g, ' ')
-              ?.trim();
-
-          td.innerText =
-            text || '';
-
-        }
-
-      });
-
-    // Handle checkbox
-    clonedTable
-      .querySelectorAll(
-        'input[type="checkbox"]'
-      )
-      .forEach((checkbox: any) => {
-
-        const td =
-          checkbox.closest('td');
-
-        if (td) {
-
-          td.innerText =
-            checkbox.checked
-              ? 'Yes'
-              : 'No';
-
-        }
-
-      });
-
-    const html =
-      clonedTable.outerHTML;
+    html += `</table>`;
 
     await navigator.clipboard.write([
       new ClipboardItem({
