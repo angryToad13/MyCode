@@ -8,7 +8,7 @@ import {
 @Directive({
   selector: '[appCopyableTable]'
 })
-export class CopyableTableDirective
+export class CopyTableDirective
   implements AfterViewInit {
 
   constructor(
@@ -18,32 +18,69 @@ export class CopyableTableDirective
 
   ngAfterViewInit(): void {
 
-    const wrapper = this.renderer.createElement('div');
+    const wrapper =
+      this.renderer.createElement('div');
 
-    this.renderer.setStyle(wrapper, 'display', 'flex');
-    this.renderer.setStyle(wrapper, 'justify-content', 'flex-end');
-    this.renderer.setStyle(wrapper, 'margin-bottom', '10px');
+    this.renderer.setStyle(
+      wrapper,
+      'display',
+      'flex'
+    );
 
-    const button = this.renderer.createElement('button');
+    this.renderer.setStyle(
+      wrapper,
+      'justify-content',
+      'flex-end'
+    );
+
+    this.renderer.setStyle(
+      wrapper,
+      'margin-bottom',
+      '10px'
+    );
+
+    const button =
+      this.renderer.createElement('button');
 
     button.innerHTML = `
       <span class="pi pi-copy"></span>
       Copy Table
     `;
 
-    this.renderer.addClass(button, 'p-button');
-    this.renderer.addClass(button, 'p-component');
+    this.renderer.addClass(
+      button,
+      'p-button'
+    );
 
-    this.renderer.setStyle(button, 'padding', '6px 12px');
-    this.renderer.setStyle(button, 'cursor', 'pointer');
+    this.renderer.addClass(
+      button,
+      'p-component'
+    );
+
+    this.renderer.setStyle(
+      button,
+      'padding',
+      '6px 12px'
+    );
+
+    this.renderer.setStyle(
+      button,
+      'cursor',
+      'pointer'
+    );
 
     this.renderer.listen(
       button,
       'click',
-      () => this.copyTable()
+      () => {
+        this.copyTable();
+      }
     );
 
-    this.renderer.appendChild(wrapper, button);
+    this.renderer.appendChild(
+      wrapper,
+      button
+    );
 
     const parent =
       this.el.nativeElement.parentNode;
@@ -59,7 +96,9 @@ export class CopyableTableDirective
   async copyTable() {
 
     const table: HTMLTableElement =
-      this.el.nativeElement.querySelector('table');
+      this.el.nativeElement.querySelector(
+        'table'
+      );
 
     if (!table) {
       return;
@@ -71,7 +110,8 @@ export class CopyableTableDirective
     clonedTable.style.borderCollapse =
       'collapse';
 
-    clonedTable.style.width = '100%';
+    clonedTable.style.width =
+      '100%';
 
     clonedTable.style.fontFamily =
       'Arial';
@@ -91,13 +131,111 @@ export class CopyableTableDirective
 
       });
 
-    const html = clonedTable.outerHTML;
+    // Handle normal inputs
+    clonedTable
+      .querySelectorAll('input')
+      .forEach((input: any) => {
+
+        const td =
+          input.closest('td');
+
+        if (td) {
+          td.innerText =
+            input.value || '';
+        }
+
+      });
+
+    // Handle textarea
+    clonedTable
+      .querySelectorAll('textarea')
+      .forEach((textarea: any) => {
+
+        const td =
+          textarea.closest('td');
+
+        if (td) {
+          td.innerText =
+            textarea.value || '';
+        }
+
+      });
+
+    // Handle PrimeNG dropdown
+    clonedTable
+      .querySelectorAll(
+        '.p-dropdown-label'
+      )
+      .forEach((dropdown: any) => {
+
+        const td =
+          dropdown.closest('td');
+
+        if (td) {
+
+          td.innerText =
+            dropdown.innerText
+              ?.trim() || '';
+
+        }
+
+      });
+
+    // Handle PrimeNG autocomplete
+    clonedTable
+      .querySelectorAll(
+        '.p-autocomplete'
+      )
+      .forEach((autocomplete: any) => {
+
+        const td =
+          autocomplete.closest('td');
+
+        if (td) {
+
+          const text =
+            autocomplete.innerText
+              ?.replace(/\s+/g, ' ')
+              ?.trim();
+
+          td.innerText =
+            text || '';
+
+        }
+
+      });
+
+    // Handle checkbox
+    clonedTable
+      .querySelectorAll(
+        'input[type="checkbox"]'
+      )
+      .forEach((checkbox: any) => {
+
+        const td =
+          checkbox.closest('td');
+
+        if (td) {
+
+          td.innerText =
+            checkbox.checked
+              ? 'Yes'
+              : 'No';
+
+        }
+
+      });
+
+    const html =
+      clonedTable.outerHTML;
 
     await navigator.clipboard.write([
       new ClipboardItem({
         'text/html': new Blob(
           [html],
-          { type: 'text/html' }
+          {
+            type: 'text/html'
+          }
         )
       })
     ]);
