@@ -1,118 +1,107 @@
-cols = [
-  {
-    field: 'document',
-    header: 'Document',
-    width: '160px',
-    align: 'left'
-  },
-  {
-    field: 'original',
-    header: 'Original',
-    width: '120px',
-    align: 'center'
-  },
-  {
-    field: 'copy',
-    header: 'Copy',
-    width: '120px',
-    align: 'center'
-  },
-  {
-    field: 'photocopy',
-    header: 'Photocopy',
-    width: '140px',
-    align: 'center'
-  },
-  {
-    field: 'scanned',
-    header: 'Scanned',
-    width: '120px',
-    align: 'center'
-  }
-];
+import {
+  AfterViewInit,
+  Directive,
+  ElementRef,
+  Renderer2
+} from '@angular/core';
 
-users = [
-  {
-    document: 'Passport',
-    original: 2,
-    copy: 4,
-    photocopy: 1,
-    scanned: 3
-  },
-  {
-    document: 'PAN Card',
-    original: 1,
-    copy: 2,
-    photocopy: 2,
-    scanned: 1
-  }
-];
+@Directive({
+  selector: '[appCopyableTable]'
+})
+export class CopyableTableDirective
+  implements AfterViewInit {
 
-copyTable() {
+  constructor(
+    private el: ElementRef,
+    private renderer: Renderer2
+  ) {}
 
-  let html = `
-    <table
-      border="1"
-      style="
-        border-collapse: collapse;
-        width: 100%;
-        font-family: Arial;
-      "
-    >
-  `;
+  ngAfterViewInit(): void {
 
-  html += `<tr style="background:#f2f2f2;">`;
+    const wrapper = this.renderer.createElement('div');
 
-  this.cols.forEach(col => {
+    this.renderer.setStyle(wrapper, 'display', 'flex');
+    this.renderer.setStyle(wrapper, 'justify-content', 'flex-end');
+    this.renderer.setStyle(wrapper, 'margin-bottom', '10px');
 
-    html += `
-      <th
-        style="
-          padding:10px;
-          min-width:${col.width || '120px'};
-          text-align:${col.align || 'left'};
-        "
-      >
-        ${col.header}
-      </th>
+    const button = this.renderer.createElement('button');
+
+    button.innerHTML = `
+      <span class="pi pi-copy"></span>
+      Copy Table
     `;
 
-  });
+    this.renderer.addClass(button, 'p-button');
+    this.renderer.addClass(button, 'p-component');
 
-  html += `</tr>`;
+    this.renderer.setStyle(button, 'padding', '6px 12px');
+    this.renderer.setStyle(button, 'cursor', 'pointer');
 
-  this.users.forEach(row => {
+    this.renderer.listen(
+      button,
+      'click',
+      () => this.copyTable()
+    );
 
-    html += `<tr>`;
+    this.renderer.appendChild(wrapper, button);
 
-    this.cols.forEach(col => {
+    const parent =
+      this.el.nativeElement.parentNode;
 
-      html += `
-        <td
-          style="
-            padding:10px;
-            text-align:${col.align || 'left'};
-          "
-        >
-          ${row[col.field] ?? ''}
-        </td>
-      `;
+    this.renderer.insertBefore(
+      parent,
+      wrapper,
+      this.el.nativeElement
+    );
 
-    });
+  }
 
-    html += `</tr>`;
+  async copyTable() {
 
-  });
+    const table: HTMLTableElement =
+      this.el.nativeElement.querySelector('table');
 
-  html += `</table>`;
+    if (!table) {
+      return;
+    }
 
-  navigator.clipboard.write([
-    new ClipboardItem({
-      'text/html': new Blob(
-        [html],
-        { type: 'text/html' }
-      )
-    })
-  ]);
+    const clonedTable =
+      table.cloneNode(true) as HTMLTableElement;
+
+    clonedTable.style.borderCollapse =
+      'collapse';
+
+    clonedTable.style.width = '100%';
+
+    clonedTable.style.fontFamily =
+      'Arial';
+
+    clonedTable
+      .querySelectorAll('th, td')
+      .forEach((cell: any) => {
+
+        cell.style.border =
+          '1px solid #d1d5db';
+
+        cell.style.padding =
+          '10px';
+
+        cell.style.minWidth =
+          '120px';
+
+      });
+
+    const html = clonedTable.outerHTML;
+
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob(
+          [html],
+          { type: 'text/html' }
+        )
+      })
+    ]);
+
+  }
 
 }
