@@ -1,20 +1,17 @@
 // validation.service.ts
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { FormGroup } from '@angular/forms';
-import { Observable, from, of } from 'rxjs';
+import { ConfirmationService } from 'primeng/api';
+import {
+  Observable,
+  from,
+  of
+} from 'rxjs';
+
 import {
   concatMap,
-  filter,
-  tap,
-  map,
-  catchError
+  switchMap
 } from 'rxjs/operators';
-
-export interface ValidationResponse {
-  valid: boolean;
-  message?: string;
-}
 
 @Injectable({
   providedIn: 'root'
@@ -22,13 +19,13 @@ export interface ValidationResponse {
 export class ValidationService {
 
   constructor(
-    private http: HttpClient
+    private confirmationService: ConfirmationService
   ) {}
 
   runValidations(
     validationString: string,
-    formGroup: FormGroup
-  ): Observable<void> {
+    form: FormGroup
+  ): Observable<boolean> {
 
     const validations = validationString
       ?.split(',')
@@ -36,94 +33,110 @@ export class ValidationService {
       .filter(Boolean);
 
     return from(validations).pipe(
+
+      // executes sequentially
       concatMap(validationName =>
-        this.executeValidation(validationName, formGroup).pipe(
-          filter(response => response.valid),
-          tap(response => {
-            this.showPrimeNgPopup(
-              `${validationName} success`,
-              response.message || 'Validation passed'
-            );
-          }),
-          map(() => void 0)
-        )
-      )
+        this.executeValidation(validationName, form)
+      ),
+
+      // stop execution immediately on reject
+      switchMap((isValid: boolean) => {
+        if (!isValid) {
+          throw new Error('Validation rejected');
+        }
+
+        return of(true);
+      })
     );
   }
 
   private executeValidation(
     validationName: string,
-    formGroup: FormGroup
-  ): Observable<ValidationResponse> {
+    form: FormGroup
+  ): Observable<boolean> {
 
     const validationMap: Record<
       string,
-      () => Observable<ValidationResponse>
+      () => Observable<boolean>
     > = {
+
       'document-validation': () =>
-        this.documentValidation(formGroup),
+        this.documentValidation(form),
 
       'currency-validation': () =>
-        this.currencyValidation(formGroup)
+        this.currencyValidation(form)
     };
 
-    const validationMethod = validationMap[validationName];
-
-    if (!validationMethod) {
-      console.warn(`No validation method found for ${validationName}`);
-      return of({ valid: false });
-    }
-
-    return validationMethod().pipe(
-      catchError(() => of({ valid: false }))
-    );
+    return validationMap[validationName]
+      ? validationMap[validationName]()
+      : of(true);
   }
 
-  // -----------------------------------
-  // Validation methods with form values
-  // -----------------------------------
+  // ------------------------------------------------
+  // DOCUMENT VALIDATION
+  // ------------------------------------------------
 
   private documentValidation(
-    formGroup: FormGroup
-  ): Observable<ValidationResponse> {
+    form: FormGroup
+  ): Observable<boolean> {
 
-    const payload = {
-      documentNumber: formGroup.get('documentNumber')?.value,
-      customerName: formGroup.get('customerName')?.value
-    };
+    const hasIssue = true;
 
-    return this.http.post<ValidationResponse>(
-      '/api/document-validation',
-      payload
-    );
+    if (!hasIssue) {
+      return of(true);
+    }
+
+    return new Observable<boolean>((observer) => {
+
+      this.confirmationService.confirm({
+        key: 'document-warning',
+        header: 'Confirmation',
+        message: 'Document validation failed. Continue?',
+
+        accept: () => {
+          observer.next(true);
+          observer.complete();
+        },
+
+        reject: () => {
+          observer.next(false);
+          observer.complete();
+        }
+      });
+    });
   }
+
+  // ------------------------------------------------
+  // CURRENCY VALIDATION
+  // ------------------------------------------------
 
   private currencyValidation(
-    formGroup: FormGroup
-  ): Observable<ValidationResponse> {
+    form: FormGroup
+  ): Observable<boolean> {
 
-    const payload = {
-      currency: formGroup.get('currency')?.value,
-      amount: formGroup.get('amount')?.value
-    };
+    const hasIssue = true;
 
-    return this.http.post<ValidationResponse>(
-      '/api/currency-validation',
-      payload
-    );
-  }
+    if (!hasIssue) {
+      return of(true);
+    }
 
-  private showPrimeNgPopup(
-    summary: string,
-    detail: string
-  ): void {
+    return new Observable<boolean>((observer) => {
 
-    // this.messageService.add({
-    //   severity: 'success',
-    //   summary,
-    //   detail
-    // });
+      this.confirmationService.confirm({
+        key: 'currency-warning',
+        header: 'Confirmation',
+        message: 'Currency mismatch found. Continue?',
 
-    alert(`${summary} - ${detail}`);
+        accept: () => {
+          observer.next(true);
+          observer.complete();
+        },
+
+        reject: () => {
+          observer.next(false);
+          observer.complete();
+        }
+      });
+    });
   }
 }
