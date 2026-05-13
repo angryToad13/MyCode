@@ -1,180 +1,129 @@
+// validation.service.ts
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { FormGroup } from '@angular/forms';
+import { Observable, from, of } from 'rxjs';
 import {
-  AfterViewInit,
-  Directive,
-  ElementRef,
-  Input,
-  Renderer2
-} from '@angular/core';
+  concatMap,
+  filter,
+  tap,
+  map,
+  catchError
+} from 'rxjs/operators';
 
-@Directive({
-  selector: '[appCopyableTable]'
+export interface ValidationResponse {
+  valid: boolean;
+  message?: string;
+}
+
+@Injectable({
+  providedIn: 'root'
 })
-export class CopyTableDirective
-  implements AfterViewInit {
-
-  @Input('appCopyableTable')
-  tableData: any[] = [];
-
-  @Input()
-  copyColumns: any[] = [];
+export class ValidationService {
 
   constructor(
-    private el: ElementRef,
-    private renderer: Renderer2
+    private http: HttpClient
   ) {}
 
-  ngAfterViewInit(): void {
+  runValidations(
+    validationString: string,
+    formGroup: FormGroup
+  ): Observable<void> {
 
-    const wrapper =
-      this.renderer.createElement('div');
+    const validations = validationString
+      ?.split(',')
+      .map(v => v.trim())
+      .filter(Boolean);
 
-    this.renderer.setStyle(
-      wrapper,
-      'display',
-      'flex'
-    );
-
-    this.renderer.setStyle(
-      wrapper,
-      'justify-content',
-      'flex-end'
-    );
-
-    this.renderer.setStyle(
-      wrapper,
-      'margin-bottom',
-      '10px'
-    );
-
-    const button =
-      this.renderer.createElement('button');
-
-    button.innerHTML = `
-      <span class="pi pi-copy"></span>
-      Copy Table
-    `;
-
-    this.renderer.addClass(
-      button,
-      'p-button'
-    );
-
-    this.renderer.addClass(
-      button,
-      'p-component'
-    );
-
-    this.renderer.setStyle(
-      button,
-      'padding',
-      '6px 12px'
-    );
-
-    this.renderer.listen(
-      button,
-      'click',
-      () => {
-        this.copyTable();
-      }
-    );
-
-    this.renderer.appendChild(
-      wrapper,
-      button
-    );
-
-    const parent =
-      this.el.nativeElement.parentNode;
-
-    this.renderer.insertBefore(
-      parent,
-      wrapper,
-      this.el.nativeElement
-    );
-
-  }
-
-  async copyTable() {
-
-    let html = `
-      <table
-        border="1"
-        style="
-          border-collapse: collapse;
-          width: 100%;
-          font-family: Arial;
-        "
-      >
-    `;
-
-    html += `
-      <tr style="background:#f2f2f2;">
-    `;
-
-    this.copyColumns.forEach(col => {
-
-      html += `
-        <th
-          style="
-            padding:10px;
-            min-width:${col.width || '120px'};
-            text-align:${col.align || 'left'};
-          "
-        >
-          ${col.header}
-        </th>
-      `;
-
-    });
-
-    html += `</tr>`;
-
-    this.tableData.forEach(row => {
-
-      html += `<tr>`;
-
-      this.copyColumns.forEach(col => {
-
-        let value =
-          row[col.field];
-
-        if (
-          value === null ||
-          value === undefined
-        ) {
-          value = '';
-        }
-
-        html += `
-          <td
-            style="
-              padding:10px;
-              text-align:${col.align || 'left'};
-            "
-          >
-            ${value}
-          </td>
-        `;
-
-      });
-
-      html += `</tr>`;
-
-    });
-
-    html += `</table>`;
-
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        'text/html': new Blob(
-          [html],
-          {
-            type: 'text/html'
-          }
+    return from(validations).pipe(
+      concatMap(validationName =>
+        this.executeValidation(validationName, formGroup).pipe(
+          filter(response => response.valid),
+          tap(response => {
+            this.showPrimeNgPopup(
+              `${validationName} success`,
+              response.message || 'Validation passed'
+            );
+          }),
+          map(() => void 0)
         )
-      })
-    ]);
-
+      )
+    );
   }
 
+  private executeValidation(
+    validationName: string,
+    formGroup: FormGroup
+  ): Observable<ValidationResponse> {
+
+    const validationMap: Record<
+      string,
+      () => Observable<ValidationResponse>
+    > = {
+      'document-validation': () =>
+        this.documentValidation(formGroup),
+
+      'currency-validation': () =>
+        this.currencyValidation(formGroup)
+    };
+
+    const validationMethod = validationMap[validationName];
+
+    if (!validationMethod) {
+      console.warn(`No validation method found for ${validationName}`);
+      return of({ valid: false });
+    }
+
+    return validationMethod().pipe(
+      catchError(() => of({ valid: false }))
+    );
+  }
+
+  // -----------------------------------
+  // Validation methods with form values
+  // -----------------------------------
+
+  private documentValidation(
+    formGroup: FormGroup
+  ): Observable<ValidationResponse> {
+
+    const payload = {
+      documentNumber: formGroup.get('documentNumber')?.value,
+      customerName: formGroup.get('customerName')?.value
+    };
+
+    return this.http.post<ValidationResponse>(
+      '/api/document-validation',
+      payload
+    );
+  }
+
+  private currencyValidation(
+    formGroup: FormGroup
+  ): Observable<ValidationResponse> {
+
+    const payload = {
+      currency: formGroup.get('currency')?.value,
+      amount: formGroup.get('amount')?.value
+    };
+
+    return this.http.post<ValidationResponse>(
+      '/api/currency-validation',
+      payload
+    );
+  }
+
+  private showPrimeNgPopup(
+    summary: string,
+    detail: string
+  ): void {
+
+    // this.messageService.add({
+    //   severity: 'success',
+    //   summary,
+    //   detail
+    // });
+
+    alert(`${summary} - ${detail}`);
+  }
 }
