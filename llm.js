@@ -6,19 +6,18 @@ import { ConfirmationService } from 'primeng/api';
 import {
   Observable,
   from,
-  of
+  of,
+  throwError
 } from 'rxjs';
 
 import {
   concatMap,
-  map,
-  switchMap,
-  toArray
+  switchMap
 } from 'rxjs/operators';
 
 export interface ValidationResult {
   shouldShowPopup: boolean;
-  message: string;
+  message?: string;
 }
 
 @Injectable({
@@ -42,25 +41,23 @@ export class ValidationService {
 
     return from(validations).pipe(
 
-      // execute validation methods
+      // execute ONE by ONE
       concatMap(validationName =>
-        this.executeValidation(validationName, form)
-      ),
 
-      // collect all popup messages
-      toArray(),
+        this.executeValidation(validationName, form).pipe(
 
-      // keep only popup-worthy validations
-      map(results =>
-        results.filter(r => r.shouldShowPopup)
-      ),
+          // popup only if needed
+          switchMap(result => {
 
-      // show same popup sequentially
-      switchMap(results =>
-        from(results).pipe(
-          concatMap(result =>
-            this.showConfirmationPopup(result.message)
-          )
+            if (!result.shouldShowPopup) {
+              return of(true);
+            }
+
+            // wait until popup accepted
+            return this.showConfirmationPopup(
+              result.message || 'Continue?'
+            );
+          })
         )
       )
     );
@@ -86,18 +83,19 @@ export class ValidationService {
     return validationMap[validationName]
       ? validationMap[validationName]()
       : of({
-          shouldShowPopup: false,
-          message: ''
+          shouldShowPopup: false
         });
   }
 
-  // ------------------------------------
-  // VALIDATION METHODS
-  // ------------------------------------
+  // ----------------------------------
+  // VALIDATIONS
+  // ----------------------------------
 
   private documentValidation(
     form: FormGroup
   ): Observable<ValidationResult> {
+
+    // API call here
 
     const hasIssue = true;
 
@@ -111,6 +109,8 @@ export class ValidationService {
     form: FormGroup
   ): Observable<ValidationResult> {
 
+    // API call here
+
     const hasIssue = true;
 
     return of({
@@ -119,9 +119,9 @@ export class ValidationService {
     });
   }
 
-  // ------------------------------------
+  // ----------------------------------
   // SINGLE REUSABLE POPUP
-  // ------------------------------------
+  // ----------------------------------
 
   private showConfirmationPopup(
     message: string
@@ -140,7 +140,7 @@ export class ValidationService {
         },
 
         reject: () => {
-          observer.error(false);
+          observer.error('User rejected');
         }
       });
     });
