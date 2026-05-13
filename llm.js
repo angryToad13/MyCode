@@ -2,6 +2,7 @@
 import { Injectable } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 import { ConfirmationService } from 'primeng/api';
+
 import {
   Observable,
   from,
@@ -10,8 +11,15 @@ import {
 
 import {
   concatMap,
-  switchMap
+  map,
+  switchMap,
+  toArray
 } from 'rxjs/operators';
+
+export interface ValidationResult {
+  shouldShowPopup: boolean;
+  message: string;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -34,30 +42,38 @@ export class ValidationService {
 
     return from(validations).pipe(
 
-      // executes sequentially
+      // execute validation methods
       concatMap(validationName =>
         this.executeValidation(validationName, form)
       ),
 
-      // stop execution immediately on reject
-      switchMap((isValid: boolean) => {
-        if (!isValid) {
-          throw new Error('Validation rejected');
-        }
+      // collect all popup messages
+      toArray(),
 
-        return of(true);
-      })
+      // keep only popup-worthy validations
+      map(results =>
+        results.filter(r => r.shouldShowPopup)
+      ),
+
+      // show same popup sequentially
+      switchMap(results =>
+        from(results).pipe(
+          concatMap(result =>
+            this.showConfirmationPopup(result.message)
+          )
+        )
+      )
     );
   }
 
   private executeValidation(
     validationName: string,
     form: FormGroup
-  ): Observable<boolean> {
+  ): Observable<ValidationResult> {
 
     const validationMap: Record<
       string,
-      () => Observable<boolean>
+      () => Observable<ValidationResult>
     > = {
 
       'document-validation': () =>
@@ -69,63 +85,54 @@ export class ValidationService {
 
     return validationMap[validationName]
       ? validationMap[validationName]()
-      : of(true);
+      : of({
+          shouldShowPopup: false,
+          message: ''
+        });
   }
 
-  // ------------------------------------------------
-  // DOCUMENT VALIDATION
-  // ------------------------------------------------
+  // ------------------------------------
+  // VALIDATION METHODS
+  // ------------------------------------
 
   private documentValidation(
     form: FormGroup
-  ): Observable<boolean> {
+  ): Observable<ValidationResult> {
 
     const hasIssue = true;
 
-    if (!hasIssue) {
-      return of(true);
-    }
-
-    return new Observable<boolean>((observer) => {
-
-      this.confirmationService.confirm({
-        key: 'document-warning',
-        header: 'Confirmation',
-        message: 'Document validation failed. Continue?',
-
-        accept: () => {
-          observer.next(true);
-          observer.complete();
-        },
-
-        reject: () => {
-          observer.next(false);
-          observer.complete();
-        }
-      });
+    return of({
+      shouldShowPopup: hasIssue,
+      message: 'Document validation failed. Continue?'
     });
   }
 
-  // ------------------------------------------------
-  // CURRENCY VALIDATION
-  // ------------------------------------------------
-
   private currencyValidation(
     form: FormGroup
-  ): Observable<boolean> {
+  ): Observable<ValidationResult> {
 
     const hasIssue = true;
 
-    if (!hasIssue) {
-      return of(true);
-    }
+    return of({
+      shouldShowPopup: hasIssue,
+      message: 'Currency mismatch found. Continue?'
+    });
+  }
+
+  // ------------------------------------
+  // SINGLE REUSABLE POPUP
+  // ------------------------------------
+
+  private showConfirmationPopup(
+    message: string
+  ): Observable<boolean> {
 
     return new Observable<boolean>((observer) => {
 
       this.confirmationService.confirm({
-        key: 'currency-warning',
+        key: 'validation-popup',
         header: 'Confirmation',
-        message: 'Currency mismatch found. Continue?',
+        message,
 
         accept: () => {
           observer.next(true);
@@ -133,8 +140,7 @@ export class ValidationService {
         },
 
         reject: () => {
-          observer.next(false);
-          observer.complete();
+          observer.error(false);
         }
       });
     });
