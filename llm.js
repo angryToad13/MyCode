@@ -14,234 +14,114 @@ export class ValidationDialogService {
   private messageSubject =
     new BehaviorSubject<string>('');
 
-  message$ =
+  readonly message$ =
     this.messageSubject.asObservable();
-
-  private responseSubject =
-    new Subject<boolean>();
-
-  response$ =
-    this.responseSubject.asObservable();
 
   private visibleSubject =
     new BehaviorSubject<boolean>(false);
 
-  visible$ =
+  readonly visible$ =
     this.visibleSubject.asObservable();
 
-  open(message: string): Observable<boolean> {
+  private responseSubject =
+    new Subject<boolean>();
+
+  readonly response$ =
+    this.responseSubject.asObservable();
+
+  open(
+    message: string,
+    isLastValidation: boolean
+  ): Observable<boolean> {
 
     this.messageSubject.next(message);
 
-    this.visibleSubject.next(true);
+    // open only once
+    if (!this.visibleSubject.value) {
+      this.visibleSubject.next(true);
+    }
+
+    // store last validation state
+    this.isLastValidation = isLastValidation;
 
     return this.response$;
   }
 
+  private isLastValidation = false;
+
   accept(): void {
+
     this.responseSubject.next(true);
-    this.visibleSubject.next(false);
+
+    // close ONLY after last validation
+    if (this.isLastValidation) {
+      this.visibleSubject.next(false);
+    }
   }
 
   reject(): void {
+
     this.responseSubject.next(false);
+
+    // reject should always close
     this.visibleSubject.next(false);
   }
 }
 
 
-// validation-dialog.component.ts
-import { Component } from '@angular/core';
-import { ValidationDialogService } from './validation-dialog.service';
-
-@Component({
-  selector: 'app-validation-dialog',
-  template: `
-    <p-dialog
-      header="Confirmation"
-      [modal]="true"
-      [closable]="false"
-      [dismissableMask]="false"
-      [(visible)]="visible">
-
-      <p class="mb-4">
-        {{ message$ | async }}
-      </p>
-
-      <div class="flex justify-content-end gap-2">
-
-        <button
-          pButton
-          type="button"
-          label="Cancel"
-          class="p-button-text"
-          (click)="reject()">
-        </button>
-
-        <button
-          pButton
-          type="button"
-          label="Continue"
-          (click)="accept()">
-        </button>
-
-      </div>
-    </p-dialog>
-  `
-})
-export class ValidationDialogComponent {
-
-  message$ =
-    this.validationDialogService.message$;
-
-  visible = false;
-
-  constructor(
-    private validationDialogService: ValidationDialogService
-  ) {
-
-    this.validationDialogService.visible$
-      .subscribe(v => {
-        this.visible = v;
-      });
-  }
-
-  accept(): void {
-    this.validationDialogService.accept();
-  }
-
-  reject(): void {
-    this.validationDialogService.reject();
-  }
-}
 
 
-// validation.service.ts
-import { Injectable } from '@angular/core';
-import { FormGroup } from '@angular/forms';
 
-import {
-  Observable,
-  from,
-  of,
-  throwError
-} from 'rxjs';
+runValidations(
+  validationString: string,
+  form: FormGroup
+): Observable<boolean> {
 
-import {
-  concatMap,
-  switchMap,
-  take
-} from 'rxjs/operators';
+  const validations = validationString
+    ?.split(',')
+    .map(v => v.trim())
+    .filter(Boolean);
 
-import {
-  ValidationDialogService
-} from './validation-dialog.service';
+  return from(validations).pipe(
 
-export interface ValidationResult {
-  shouldShowPopup: boolean;
-  message?: string;
-}
+    concatMap((validationName, index) =>
 
-@Injectable({
-  providedIn: 'root'
-})
-export class ValidationService {
+      this.executeValidation(
+        validationName,
+        form
+      ).pipe(
 
-  constructor(
-    private validationDialogService:
-      ValidationDialogService
-  ) {}
+        switchMap(result => {
 
-  runValidations(
-    validationString: string,
-    form: FormGroup
-  ): Observable<boolean> {
+          if (!result.shouldShowPopup) {
+            return of(true);
+          }
 
-    const validations = validationString
-      ?.split(',')
-      .map(v => v.trim())
-      .filter(Boolean);
+          const isLastValidation =
+            index === validations.length - 1;
 
-    return from(validations).pipe(
+          return this.validationDialogService
+            .open(
+              result.message || 'Continue?',
+              isLastValidation
+            )
+            .pipe(
 
-      concatMap(validationName =>
+              take(1),
 
-        this.executeValidation(
-          validationName,
-          form
-        ).pipe(
+              switchMap(accepted => {
 
-          switchMap(result => {
+                if (accepted) {
+                  return of(true);
+                }
 
-            if (!result.shouldShowPopup) {
-              return of(true);
-            }
-
-            return this.validationDialogService
-              .open(result.message || 'Continue?')
-              .pipe(
-
-                take(1),
-
-                switchMap(accepted => {
-
-                  if (accepted) {
-                    return of(true);
-                  }
-
-                  return throwError(() =>
-                    new Error('Rejected')
-                  );
-                })
-              );
-          })
-        )
+                return throwError(() =>
+                  new Error('Rejected')
+                );
+              })
+            );
+        })
       )
-    );
-  }
-
-  private executeValidation(
-    validationName: string,
-    form: FormGroup
-  ): Observable<ValidationResult> {
-
-    const validationMap: Record<
-      string,
-      () => Observable<ValidationResult>
-    > = {
-
-      'document-validation': () =>
-        this.documentValidation(form),
-
-      'currency-validation': () =>
-        this.currencyValidation(form)
-    };
-
-    return validationMap[validationName]
-      ? validationMap[validationName]()
-      : of({
-          shouldShowPopup: false
-        });
-  }
-
-  private documentValidation(
-    form: FormGroup
-  ): Observable<ValidationResult> {
-
-    return of({
-      shouldShowPopup: true,
-      message: 'Document validation failed'
-    });
-  }
-
-  private currencyValidation(
-    form: FormGroup
-  ): Observable<ValidationResult> {
-
-    return of({
-      shouldShowPopup: true,
-      message: 'Currency mismatch found'
-    });
-  }
+    )
+  );
 }
-
