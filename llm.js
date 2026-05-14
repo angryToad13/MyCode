@@ -1,25 +1,141 @@
+// validation-dialog.service.ts
+import { Injectable } from '@angular/core';
+import {
+  BehaviorSubject,
+  Observable,
+  Subject
+} from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ValidationDialogService {
+
+  private messageSubject =
+    new BehaviorSubject<string>('');
+
+  message$ =
+    this.messageSubject.asObservable();
+
+  private responseSubject =
+    new Subject<boolean>();
+
+  response$ =
+    this.responseSubject.asObservable();
+
+  private visibleSubject =
+    new BehaviorSubject<boolean>(false);
+
+  visible$ =
+    this.visibleSubject.asObservable();
+
+  open(message: string): Observable<boolean> {
+
+    this.messageSubject.next(message);
+
+    this.visibleSubject.next(true);
+
+    return this.response$;
+  }
+
+  accept(): void {
+    this.responseSubject.next(true);
+    this.visibleSubject.next(false);
+  }
+
+  reject(): void {
+    this.responseSubject.next(false);
+    this.visibleSubject.next(false);
+  }
+}
+
+
+// validation-dialog.component.ts
+import { Component } from '@angular/core';
+import { ValidationDialogService } from './validation-dialog.service';
+
+@Component({
+  selector: 'app-validation-dialog',
+  template: `
+    <p-dialog
+      header="Confirmation"
+      [modal]="true"
+      [closable]="false"
+      [dismissableMask]="false"
+      [(visible)]="visible">
+
+      <p class="mb-4">
+        {{ message$ | async }}
+      </p>
+
+      <div class="flex justify-content-end gap-2">
+
+        <button
+          pButton
+          type="button"
+          label="Cancel"
+          class="p-button-text"
+          (click)="reject()">
+        </button>
+
+        <button
+          pButton
+          type="button"
+          label="Continue"
+          (click)="accept()">
+        </button>
+
+      </div>
+    </p-dialog>
+  `
+})
+export class ValidationDialogComponent {
+
+  message$ =
+    this.validationDialogService.message$;
+
+  visible = false;
+
+  constructor(
+    private validationDialogService: ValidationDialogService
+  ) {
+
+    this.validationDialogService.visible$
+      .subscribe(v => {
+        this.visible = v;
+      });
+  }
+
+  accept(): void {
+    this.validationDialogService.accept();
+  }
+
+  reject(): void {
+    this.validationDialogService.reject();
+  }
+}
+
+
 // validation.service.ts
 import { Injectable } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 
 import {
-  DialogService,
-  DynamicDialogRef
-} from 'primeng/dynamicdialog';
-
-import {
   Observable,
-  of,
   from,
+  of,
   throwError
 } from 'rxjs';
 
 import {
   concatMap,
-  switchMap
+  switchMap,
+  take
 } from 'rxjs/operators';
 
-import { ValidationDialogComponent } from './validation-dialog.component';
+import {
+  ValidationDialogService
+} from './validation-dialog.service';
 
 export interface ValidationResult {
   shouldShowPopup: boolean;
@@ -32,7 +148,8 @@ export interface ValidationResult {
 export class ValidationService {
 
   constructor(
-    private dialogService: DialogService
+    private validationDialogService:
+      ValidationDialogService
   ) {}
 
   runValidations(
@@ -49,7 +166,10 @@ export class ValidationService {
 
       concatMap(validationName =>
 
-        this.executeValidation(validationName, form).pipe(
+        this.executeValidation(
+          validationName,
+          form
+        ).pipe(
 
           switchMap(result => {
 
@@ -57,9 +177,23 @@ export class ValidationService {
               return of(true);
             }
 
-            return this.openValidationDialog(
-              result.message || 'Continue?'
-            );
+            return this.validationDialogService
+              .open(result.message || 'Continue?')
+              .pipe(
+
+                take(1),
+
+                switchMap(accepted => {
+
+                  if (accepted) {
+                    return of(true);
+                  }
+
+                  return throwError(() =>
+                    new Error('Rejected')
+                  );
+                })
+              );
           })
         )
       )
@@ -90,19 +224,13 @@ export class ValidationService {
         });
   }
 
-  // -------------------------------------
-  // VALIDATIONS
-  // -------------------------------------
-
   private documentValidation(
     form: FormGroup
   ): Observable<ValidationResult> {
 
-    const hasIssue = true;
-
     return of({
-      shouldShowPopup: hasIssue,
-      message: 'Document validation failed. Continue?'
+      shouldShowPopup: true,
+      message: 'Document validation failed'
     });
   }
 
@@ -110,51 +238,10 @@ export class ValidationService {
     form: FormGroup
   ): Observable<ValidationResult> {
 
-    const hasIssue = true;
-
     return of({
-      shouldShowPopup: hasIssue,
-      message: 'Currency mismatch found. Continue?'
-    });
-  }
-
-  // -------------------------------------
-  // DYNAMIC DIALOG
-  // -------------------------------------
-
-  private openValidationDialog(
-    message: string
-  ): Observable<boolean> {
-
-    return new Observable<boolean>((observer) => {
-
-      const ref: DynamicDialogRef =
-        this.dialogService.open(
-          ValidationDialogComponent,
-          {
-            header: 'Confirmation',
-            width: '450px',
-            closable: false,
-            dismissableMask: false,
-            data: {
-              message
-            }
-          }
-        );
-
-      ref.onClose.subscribe((accepted: boolean) => {
-
-        if (accepted) {
-          observer.next(true);
-          observer.complete();
-        } else {
-          observer.error(false);
-        }
-      });
-
-      ref.onDestroy.subscribe(() => {
-        ref.close();
-      });
+      shouldShowPopup: true,
+      message: 'Currency mismatch found'
     });
   }
 }
+
