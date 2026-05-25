@@ -1,127 +1,122 @@
-// validation-dialog.service.ts
-import { Injectable } from '@angular/core';
-import {
-  BehaviorSubject,
-  Observable,
-  Subject
-} from 'rxjs';
 
-@Injectable({
-  providedIn: 'root'
-})
-export class ValidationDialogService {
+interface GenericFlowOverrides<TMapping, TResult> {
 
-  private messageSubject =
-    new BehaviorSubject<string>('');
+  shouldExecute?: () => boolean;
 
-  readonly message$ =
-    this.messageSubject.asObservable();
+  onValidationFail?: () => void;
 
-  private visibleSubject =
-    new BehaviorSubject<boolean>(false);
+  afterMapping?: (mapping: TMapping[]) => void;
 
-  readonly visible$ =
-    this.visibleSubject.asObservable();
+  onError?: (error: Error) => Observable<any>;
+}
 
-  private responseSubject =
-    new Subject<boolean>();
 
-  readonly response$ =
-    this.responseSubject.asObservable();
+private executeGenericFlow<TMapping, TResult>(
+  baseConfig: {
+    fetchMapping: () => Observable<TMapping[]>;
+    execute: (mapping: TMapping[]) => Observable<TResult>;
+  },
+  overrides?: GenericFlowOverrides<TMapping, TResult>
+): void {
 
-  open(
-    message: string,
-    isLastValidation: boolean
-  ): Observable<boolean> {
+  // default behaviour
+  const defaultConfig = {
 
-    this.messageSubject.next(message);
+    shouldExecute: () => true,
 
-    // open only once
-    if (!this.visibleSubject.value) {
-      this.visibleSubject.next(true);
+    onValidationFail: () => {
+      console.warn('Validation failed');
+    },
+
+    afterMapping: (_mapping: TMapping[]) => {},
+
+    onError: (error: Error) => {
+      console.error(error);
+      return of(error);
     }
+  };
 
-    // store last validation state
-    this.isLastValidation = isLastValidation;
+  // merge defaults with overrides
+  const config = {
+    ...defaultConfig,
+    ...overrides
+  };
 
-    return this.response$;
+  if (!config.shouldExecute()) {
+    config.onValidationFail();
+    return;
   }
 
-  private isLastValidation = false;
+  baseConfig.fetchMapping()
+    .pipe(
 
-  accept(): void {
+      tap((mapping) => {
+        config.afterMapping(mapping);
+      }),
 
-    this.responseSubject.next(true);
+      switchMap((mapping) => {
 
-    // close ONLY after last validation
-    if (this.isLastValidation) {
-      this.visibleSubject.next(false);
-    }
-  }
+        if (!mapping?.length) {
+          return of({
+            response: 'Invalid mapping data'
+          } as TResult);
+        }
 
-  reject(): void {
+        return baseConfig.execute(mapping);
+      }),
 
-    this.responseSubject.next(false);
+      catchError((error: Error) => {
+        return config.onError(error);
+      })
 
-    // reject should always close
-    this.visibleSubject.next(false);
-  }
+    )
+    .subscribe();
 }
 
 
 
+triggerXmlGeneration(
+  request: Request,
+  action: string,
+  mapperFunction: EXTERNAL_TNT_MAPPER = EXTERNAL_TNT_MAPPER.DEFAULT_MAP,
+  overrides?: GenericFlowOverrides<
+    ExternalTrackAndTraceMapping,
+    StringResponse
+  >
+): void {
 
+  const ebCusFlag = get(request, 'ebCusflag', null);
+  const cxtStatus = get(request, 'cxtTrackAndTraceStatus', null);
+  const isUpdate = get(request, 'event.isUpdate', 'No');
 
-runValidations(
-  validationString: string,
-  form: FormGroup
-): Observable<boolean> {
-
-  const validations = validationString
-    ?.split(',')
-    .map(v => v.trim())
-    .filter(Boolean);
-
-  return from(validations).pipe(
-
-    concatMap((validationName, index) =>
-
-      this.executeValidation(
-        validationName,
-        form
-      ).pipe(
-
-        switchMap(result => {
-
-          if (!result.shouldShowPopup) {
-            return of(true);
-          }
-
-          const isLastValidation =
-            index === validations.length - 1;
-
-          return this.validationDialogService
-            .open(
-              result.message || 'Continue?',
-              isLastValidation
-            )
-            .pipe(
-
-              take(1),
-
-              switchMap(accepted => {
-
-                if (accepted) {
-                  return of(true);
-                }
-
-                return throwError(() =>
-                  new Error('Rejected')
-                );
-              })
-            );
-        })
-      )
-    )
+  const rsql = generateRsql<RequestExtended>(
+    externalTrackAndTraceRsqlFields,
+    { ...request, action }
   );
+
+  this.executeGenericFlow({
+
+    fetchMapping: () =>
+      this.initiatEventDataService
+        .getExternalTrackAndTraceMapping(rsql),
+
+    execute: (mappingData) =>
+      this.initiatEventDataService
+        .sendDataToConnexis(
+          this.actionMap[mapperFunction]?.(
+            request,
+            mappingData[0]
+          )
+        )
+
+  }, {
+
+    // DEFAULT CONDITIONS
+    shouldExecute: () =>
+      VALID_CXT_STATUS.includes(cxtStatus) &&
+      isUpdate === IS_UPDATE_FLAG &&
+      ebCusFlag === ALLOWED_EB_CUS,
+
+    ...overrides
+  });
 }
