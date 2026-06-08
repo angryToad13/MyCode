@@ -24,3 +24,29 @@ public List<Customer> getCustomerByProperty(
             params.get("customerId"),
             params.get("currency"));
 }
+
+
+
+public List<Customer> getCustomerByProperty(String property, String value)
+        throws BatchException {
+
+    return switch (property) {
+        case "branchCode" ->
+                getCustomerIdOrCustomerAccount(value, null, null, null, null);
+
+        case "countryCode" ->
+                getCustomerIdOrCustomerAccount(null, value, null, null, null);
+
+        case "customerName" ->
+                getCustomerIdOrCustomerAccount(null, null, value, null, null);
+
+        case "customerId" ->
+                getCustomerIdOrCustomerAccount(null, null, null, value, null);
+
+        case "currency" ->
+                getCustomerIdOrCustomerAccount(null, null, null, null, value);
+
+        default ->
+                throw new IllegalArgumentException("Unsupported property: " + property);
+    };
+}
