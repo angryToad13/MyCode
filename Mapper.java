@@ -1,105 +1,26 @@
-@Mapper(componentModel = "spring")
-public interface TxnMapper {
+public List<Customer> getCustomerByProperty(
+        String property,
+        String value) throws BatchException {
 
-    @Mapping(target = "boStatusUpdate", source = "branchCode")
-    void mapBoStatusUpdate(ExternalTNTRequest source, @MappingTarget TxnRecord target);
+    Map<String, String> params = new HashMap<>();
 
-    @Mapping(target = "productCode", source = "prodCode")
-    void mapProductCode(ExternalTNTRequest source, @MappingTarget TxnRecord target);
+    params.put("branchCode", null);
+    params.put("countryCode", null);
+    params.put("customerName", null);
+    params.put("customerId", null);
+    params.put("currency", null);
 
-    @Mapping(target = "releaseDttm", source = "releaseDttm")
-    void mapReleaseDttm(ExternalTNTRequest source, @MappingTarget TxnRecord target);
-
-    /* ===== Adapter methods ===== */
-
-    default void mapBoStatusUpdate(MappingContext ctx) {
-        mapBoStatusUpdate(ctx.getSource(), ctx.getTarget());
+    if (!params.containsKey(property)) {
+        throw new IllegalArgumentException(
+                "Unsupported property: " + property);
     }
 
-    default void mapProductCode(MappingContext ctx) {
-        mapProductCode(ctx.getSource(), ctx.getTarget());
-    }
+    params.put(property, value);
 
-    default void mapReleaseDttm(MappingContext ctx) {
-        mapReleaseDttm(ctx.getSource(), ctx.getTarget());
-    }
+    return getCustomerIdOrCustomerAccount(
+            params.get("branchCode"),
+            params.get("countryCode"),
+            params.get("customerName"),
+            params.get("customerId"),
+            params.get("currency"));
 }
-
-
-
-
-public class MappingContext {
-
-    private final ExternalTNTRequest source;
-    private final TxnRecord target;
-
-    public MappingContext(ExternalTNTRequest source, TxnRecord target) {
-        this.source = source;
-        this.target = target;
-    }
-
-    public ExternalTNTRequest getSource() {
-        return source;
-    }
-
-    public TxnRecord getTarget() {
-        return target;
-    }
-}
-
-
-
-
-import java.util.function.BiConsumer;
-
-public enum TxnFieldMapping {
-
-    BO_STATUS_UPDATE(TxnMapper::mapBoStatusUpdate),
-    PRODUCT_CODE(TxnMapper::mapProductCode),
-    RELEASE_DTTM(TxnMapper::mapReleaseDttm);
-
-    private final BiConsumer<TxnMapper, MappingContext> mapperCall;
-
-    TxnFieldMapping(BiConsumer<TxnMapper, MappingContext> mapperCall) {
-        this.mapperCall = mapperCall;
-    }
-
-    public void apply(TxnMapper mapper, MappingContext context) {
-        mapperCall.accept(mapper, context);
-    }
-}
-
-
-
-
-
-import java.util.List;
-
-public class TxnFieldMappingRequest {
-
-    private List<TxnFieldMapping> fields;
-
-    public List<TxnFieldMapping> getFields() {
-        return fields;
-    }
-
-    public void setFields(List<TxnFieldMapping> fields) {
-        this.fields = fields;
-    }
-}
-
-
-
-
-List<String> requestedFields =
-        Optional.ofNullable(externalTandTRequest.getFlags())
-                .map(Flags::getCommonFields)
-                .orElse(Collections.emptyList());
-
-Stream<CommonTxnRecordField> fieldStream =
-        requestedFields.isEmpty()
-                ? EnumSet.allOf(CommonTxnRecordField.class).stream()
-                : requestedFields.stream().map(this::toEnum);
-
-
-
