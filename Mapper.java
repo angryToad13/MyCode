@@ -1,52 +1,34 @@
-public List<Customer> getCustomerByProperty(
-        String property,
-        String value) throws BatchException {
+Error uvError =
+    objectMapper.readValue(
+        ex.getResponseBodyAsString(),
+        Error.class);
 
-    Map<String, String> params = new HashMap<>();
+throw new UVCustomerException(
+        uvError,
+        HttpStatus.NOT_FOUND);
 
-    params.put("branchCode", null);
-    params.put("countryCode", null);
-    params.put("customerName", null);
-    params.put("customerId", null);
-    params.put("currency", null);
 
-    if (!params.containsKey(property)) {
-        throw new IllegalArgumentException(
-                "Unsupported property: " + property);
+@Getter
+public class UVCustomerException extends RuntimeException {
+
+    private final Error error;
+    private final HttpStatus httpStatus;
+
+    public UVCustomerException(
+            Error error,
+            HttpStatus httpStatus) {
+
+        super(error.getDetail());
+        this.error = error;
+        this.httpStatus = httpStatus;
     }
-
-    params.put(property, value);
-
-    return getCustomerIdOrCustomerAccount(
-            params.get("branchCode"),
-            params.get("countryCode"),
-            params.get("customerName"),
-            params.get("customerId"),
-            params.get("currency"));
 }
 
+@ExceptionHandler(UVCustomerException.class)
+public ResponseEntity<List<Error>> handleUVCustomerException(
+        UVCustomerException e) {
 
-
-public List<Customer> getCustomerByProperty(String property, String value)
-        throws BatchException {
-
-    return switch (property) {
-        case "branchCode" ->
-                getCustomerIdOrCustomerAccount(value, null, null, null, null);
-
-        case "countryCode" ->
-                getCustomerIdOrCustomerAccount(null, value, null, null, null);
-
-        case "customerName" ->
-                getCustomerIdOrCustomerAccount(null, null, value, null, null);
-
-        case "customerId" ->
-                getCustomerIdOrCustomerAccount(null, null, null, value, null);
-
-        case "currency" ->
-                getCustomerIdOrCustomerAccount(null, null, null, null, value);
-
-        default ->
-                throw new IllegalArgumentException("Unsupported property: " + property);
-    };
+    return new ResponseEntity<>(
+            Collections.singletonList(e.getError()),
+            e.getHttpStatus());
 }
