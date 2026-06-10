@@ -32,3 +32,14 @@ public ResponseEntity<List<Error>> handleUVCustomerException(
             Collections.singletonList(e.getError()),
             e.getHttpStatus());
 }
+
+@Getter
+@Setter
+@NoArgsConstructor
+public class UVErrorResponse {
+
+    private String title;
+    private String status;
+    private String detail;
+    private String timestamp;
+}
